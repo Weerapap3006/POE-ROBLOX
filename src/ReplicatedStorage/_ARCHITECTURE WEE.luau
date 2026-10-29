@@ -26,22 +26,25 @@
      └── StarterPlayerScripts
          ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมเข้าออกสมูท
          ├── CombatClient (LocalScript) : หันหน้าตามเมาส์, รับคลิกซ้าย, เล่น VFX, เลขดาเมจเด้ง
-         └── MinimapClient (LocalScript) : มินิแมพมุมขวาบน + กด Tab ขยายกลางจอแบบ PoE
+         └── MinimapClient (LocalScript) : มินิแมพมุมขวาบน + กด M ขยายกลางจอแบบ PoE
 
 --------------------------------------------------------------------------------
 2. อยากแก้ค่าอะไร ให้ไปที่ไฟล์ไหน? (QUICK EDIT GUIDE):
    - แก้มุมกล้อง / ความเร็วกล้อง / ระยะซูม  --> StarterPlayerScripts.CameraScript
    - แก้ความแรงสกิล / คูลดาวน์ / ระยะฟัน   --> ReplicatedStorage.Modules.SkillData
    - แก้สีคลื่นดาบ / ขนาดตัวเลขดาเมจเด้ง   --> StarterPlayerScripts.CombatClient
-   - แก้ขนาดมินิแมพ / สีจุด / ความใสตอนกด Tab --> StarterPlayerScripts.MinimapClient
+   - แก้ขนาดมินิแมพ / สีจุด / ความใสตอนกด M --> StarterPlayerScripts.MinimapClient
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox --> ServerScriptService.CombatServer
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน    --> StarterPlayer.StarterCharacter
 
 --------------------------------------------------------------------------------
 3. บันทึกการแก้ไข (CHANGELOG ของ WEE) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - InventoryClient / MinimapClient:
+     + เปลี่ยนปุ่มเปิดกระเป๋าเป็น B (แทน I ที่ชนกับปุ่มซูมกล้อง Roblox) และปุ่มขยายแผนที่เป็น M (แทน Tab ที่ชนกับ Leaderboard)
+     + เช็ก UserInputService:GetFocusedTextBox() == nil เพื่อให้กดปุ่ม B และ M ติดเสมอโดยไม่โดนระบบ Roblox บล็อก
    - MinimapClient (src/StarterPlayer/StarterPlayerScripts/MinimapClient.client.luau):
-     + เพิ่มระบบมินิแมพมุมขวาบน และกดปุ่ม Tab (หรือคลิกที่แมพ) เพื่อสลับขยายเป็นแผนที่โปร่งใสกลางจอแบบ PoE
+     + เพิ่มระบบมินิแมพมุมขวาบน และกดปุ่ม M (หรือคลิกที่แมพ) เพื่อสลับขยายเป็นแผนที่โปร่งใสกลางจอแบบ PoE
      + จุดตัวเราเป็นสีขาวพร้อมเข็มชี้ทิศหน้า, จุดมอนสเตอร์สีแดง, จุดบอสสีส้มทอง, ประตูวาร์ป และแท่งกำแพงด่าน
      + แสดงตัวนับจำนวนศัตรูที่เหลืออยู่ในด่านมุมขวาล่างของมินิแมพ
      + รวมค่าตั้งค่า (ขนาด/ระยะมองเห็น/ความโปร่งใส/สีจุด) ไว้ที่หัวไฟล์ปรับแก้ได้ทันที

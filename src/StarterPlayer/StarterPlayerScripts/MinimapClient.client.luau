@@ -1,5 +1,5 @@
 -- ==========================================
--- MINIMAP CLIENT (Corner Radar + Tab Overlay Map with Enemies, Boss, Portals & Walls)
+-- MINIMAP CLIENT (Corner Radar + M Overlay Map with Enemies, Boss, Portals & Walls)
 -- Path: StarterPlayer.StarterPlayerScripts.MinimapClient
 -- ==========================================
 local Players = game:GetService("Players")
@@ -16,18 +16,18 @@ local Ui = require(modulesFolder:WaitForChild("Ui"))
 -- ==========================================
 -- CONFIGURATION (ปรับค่าขนาด, ระยะ, สี, ความโปร่งใส ได้ที่นี่)
 -- ==========================================
-local TOGGLE_OVERLAY_KEY = Enum.KeyCode.Tab -- ปุ่มสลับขยายแผนที่กลางจอแบบ PoE
+local TOGGLE_OVERLAY_KEY = Enum.KeyCode.M -- ปุ่มสลับขยายแผนที่กลางจอแบบ PoE
 
 -- 1. โหมดมุมขวาบน (Corner Radar Mode)
 local CORNER_MAP_SIZE = 185 -- ขนาดกรอบมินิแมพมุมขวาบน (พิกเซล)
 local CORNER_VIEW_RADIUS = 130 -- ระยะมองเห็นในมินิแมพมุมขวาบน (studs รอบตัวเรา)
 local CORNER_BG_TRANSPARENCY = 0.2 -- ความโปร่งใสพื้นหลังตอนอยู่มุมขวาบน (0 = ทึบ, 1 = ใส)
 
--- 2. โหมดกด Tab ขยายกลางจอ (Overlay Mode แบบ PoE)
-local OVERLAY_MAP_SIZE = 460 -- ขนาดแผนที่ตอนกด Tab มาอยู่กลางจอ (พิกเซล)
-local OVERLAY_VIEW_RADIUS = 240 -- ระยะมองเห็นตอนกด Tab กลางจอ (studs รอบตัวเรา เห็นกว้างขึ้น)
-local OVERLAY_BG_TRANSPARENCY = 0.45 -- ความโปร่งใสพื้นหลังตอนกด Tab กลางจอ
-local OVERLAY_STROKE_TRANSPARENCY = 0.3 -- ความโปร่งใสเส้นขอบตอนกด Tab กลางจอ
+-- 2. โหมดกด M ขยายกลางจอ (Overlay Mode แบบ PoE)
+local OVERLAY_MAP_SIZE = 460 -- ขนาดแผนที่ตอนกด M มาอยู่กลางจอ (พิกเซล)
+local OVERLAY_VIEW_RADIUS = 240 -- ระยะมองเห็นตอนกด M กลางจอ (studs รอบตัวเรา เห็นกว้างขึ้น)
+local OVERLAY_BG_TRANSPARENCY = 0.45 -- ความโปร่งใสพื้นหลังตอนกด M กลางจอ
+local OVERLAY_STROKE_TRANSPARENCY = 0.3 -- ความโปร่งใสเส้นขอบตอนกด M กลางจอ
 
 -- 3. สีและขนาดของจุดสัญลักษณ์ต่างๆ ในแผนที่
 local SELF_COLOR = Color3.fromRGB(255, 255, 255) -- สีจุดตัวเรา (สีขาวตามที่ตั้งไว้)
@@ -125,7 +125,7 @@ local titleLabel = Ui.text({
 	TextSize = 12,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextColor3 = Ui.Colors.TextDim,
-	Text = "แผนที่ [Tab]",
+	Text = "แผนที่ [M]",
 	ZIndex = 12,
 	Parent = mapFrame,
 })
@@ -158,14 +158,14 @@ local function applyMapMode()
 		mapFrame.Size = UDim2.fromOffset(OVERLAY_MAP_SIZE, OVERLAY_MAP_SIZE)
 		mapFrame.BackgroundTransparency = OVERLAY_BG_TRANSPARENCY
 		mapStroke.Transparency = OVERLAY_STROKE_TRANSPARENCY
-		titleLabel.Text = "แผนที่กลางจอ (กด Tab เพื่อย่อ)"
+		titleLabel.Text = "แผนที่กลางจอ (กด M เพื่อย่อ)"
 	else
 		mapFrame.AnchorPoint = Vector2.new(1, 0)
 		mapFrame.Position = if isTouchOnly then UDim2.new(1, -12, 0, 56) else UDim2.new(1, -16, 0, 16)
 		mapFrame.Size = UDim2.fromOffset(CORNER_MAP_SIZE, CORNER_MAP_SIZE)
 		mapFrame.BackgroundTransparency = CORNER_BG_TRANSPARENCY
 		mapStroke.Transparency = 0
-		titleLabel.Text = if isTouchOnly then "แตะเพื่อขยาย" else "แผนที่ [Tab]"
+		titleLabel.Text = if isTouchOnly then "แตะเพื่อขยาย" else "แผนที่ [M]"
 	end
 end
 
@@ -176,8 +176,8 @@ end
 
 clickToggle.Activated:Connect(toggleOverlayMode)
 
-UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
-	if gameProcessedEvent then
+UserInputService.InputBegan:Connect(function(input: InputObject)
+	if UserInputService:GetFocusedTextBox() then
 		return
 	end
 	if input.KeyCode == TOGGLE_OVERLAY_KEY then

@@ -19,7 +19,7 @@ local Ui = require(modulesFolder:WaitForChild("Ui"))
 -- ==========================================
 -- CONFIGURATION
 -- ==========================================
-local TOGGLE_KEY = Enum.KeyCode.I
+local TOGGLE_KEY = Enum.KeyCode.B
 local GRID_COLUMNS = 5
 local CELL_SIZE = 54
 local CELL_GAP = 6
@@ -76,7 +76,7 @@ local toggleButton = Ui.button({
 	Size = UDim2.fromOffset(130, 40),
 	BackgroundColor3 = Ui.Colors.Panel,
 	BackgroundTransparency = 0.15,
-	Text = if isTouchOnly then "กระเป๋า" else "กระเป๋า [I]",
+	Text = if isTouchOnly then "กระเป๋า" else "กระเป๋า [B]",
 	Parent = gui,
 }, { Ui.corner(8), Ui.stroke(Ui.Colors.Accent, 2) })
 
@@ -392,8 +392,8 @@ closeButton.Activated:Connect(function()
 	setOpen(false)
 end)
 
-UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
-	if gameProcessedEvent then
+UserInputService.InputBegan:Connect(function(input: InputObject)
+	if UserInputService:GetFocusedTextBox() then
 		return
 	end
 	if input.KeyCode == TOGGLE_KEY then
