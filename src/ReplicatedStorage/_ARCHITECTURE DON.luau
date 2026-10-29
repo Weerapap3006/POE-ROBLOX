@@ -109,12 +109,14 @@
 ------------------------------------------------------------------------------
 5. ปัญหาที่รู้แล้ว ยังไม่ได้แก้ (KNOWN ISSUES):
    - Workspace.Script1: สคริปต์ว่าง 3 ตัว (print "Hello world!") ปนอยู่ในแมพ -> ลบทิ้งใน Studio
-   - CombatClient.playSlashVFX: ท่าเหวี่ยงแขน/บิดเอวตั้ง Motor6D.Transform ครั้งเดียว
-     แต่ Animator เขียนทับทุกเฟรม ทำให้แทบมองไม่เห็นท่าฟัน (VFX เสี้ยวพระจันทร์ยังขึ้นปกติ)
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-29]
+   - ARCHITECTURE.md: อัปเดตให้ตรงโค้ด -> _ARCHITECTURE DON/WEE, ท่าฟัน PreSimulation + จุดปรับแก้ของ
+     CombatClient, ReplicateSlash, MAX_ZOOM_DISTANCE 90 -> 50 (โค้ดเป็น 50 มาตั้งแต่แรก)
+   - CombatClient: แก้ท่าฟันที่มองไม่เห็น -> ใส่ท่าเหวี่ยงแขน/บิดเอวซ้ำทุกเฟรมใน RunService.PreSimulation
+     (รันหลัง Animator) ซ้อนบนท่าเดิน/ยืน, เหวี่ยงออกแล้วกลับใน 0.18 วิ (SWING_DURATION)
    - แยกโน้ตคนละไฟล์: _ARCHITECTURE -> _ARCHITECTURE DON (chwwy, ไฟล์นี้)
      + เพิ่ม _ARCHITECTURE WEE (Weerapap3006) เข้า src/ ด้วยเนื้อหาเดิมจาก Studio ทุกตัวอักษร
      -> ทั้งสองไฟล์ขึ้น GitHub แล้ว, Rojo จะไม่สร้าง _ARCHITECTURE ตัวเก่ากลับมาอีก

@@ -89,6 +89,54 @@ RunService:BindToRenderStep("MouseAimRotation", Enum.RenderPriority.Character.Va
 -- ==========================================
 -- 2. PROCEDURAL SWING & CEL-SHADED SLASH VFX
 -- ==========================================
+local SWING_DURATION = 0.18 -- Seconds for the arm/waist to swing out and back
+
+-- The Animator rewrites Motor6D.Transform every frame before PreSimulation, so a pose set once
+-- gets overwritten immediately. Active swings are re-applied each PreSimulation on top of the animated pose.
+type SwingState = {
+	startTime: number,
+	offset: CFrame, -- Peak rotation layered on top of the animated pose
+	basePose: CFrame, -- Pose underneath the swing (what the Animator wrote this frame)
+	lastWritten: CFrame?, -- Our previous write, used to detect whether the Animator wrote since
+}
+local activeSwings: { [Motor6D]: SwingState } = {}
+
+local function startSwing(motor: Motor6D?, offset: CFrame)
+	if not motor then
+		return
+	end
+	-- Restarting mid-swing: keep the previous base pose, since Transform currently holds a half-swung pose
+	local previous = activeSwings[motor]
+	activeSwings[motor] = {
+		startTime = os.clock(),
+		offset = offset,
+		basePose = if previous then previous.basePose else motor.Transform,
+		lastWritten = if previous then previous.lastWritten else nil,
+	}
+end
+
+RunService.PreSimulation:Connect(function()
+	local now = os.clock()
+	for motor, swing in pairs(activeSwings) do
+		-- If Transform still holds our last write, no animation touched this joint, so keep the stored base pose
+		if motor.Transform ~= swing.lastWritten then
+			swing.basePose = motor.Transform
+		end
+
+		local t = (now - swing.startTime) / SWING_DURATION
+		if t >= 1 or not motor:IsDescendantOf(workspace) then
+			motor.Transform = swing.basePose
+			activeSwings[motor] = nil
+		else
+			-- Swing out to the peak pose and back (weight 0 -> 1 -> 0)
+			local weight = math.sin(math.pi * t)
+			local pose = swing.basePose * CFrame.identity:Lerp(swing.offset, weight)
+			motor.Transform = pose
+			swing.lastWritten = pose
+		end
+	end
+end)
+
 local function playSlashVFX(character: Model, aimPoint: Vector3, currentCombo: number)
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not rootPart then
@@ -101,26 +149,12 @@ local function playSlashVFX(character: Model, aimPoint: Vector3, currentCombo: n
 	local upperTorso = character:FindFirstChild("UpperTorso")
 	local waist = upperTorso and upperTorso:FindFirstChild("Waist") :: Motor6D?
 
-	if rightShoulder then
-		local swingAngle = if currentCombo == 1 then math.rad(110) else math.rad(75)
-		local sideAngle = if currentCombo == 1 then math.rad(-35) else math.rad(35)
-		rightShoulder.Transform = CFrame.Angles(swingAngle, sideAngle, 0)
-		task.delay(0.18, function()
-			if rightShoulder then
-				rightShoulder.Transform = CFrame.identity
-			end
-		end)
-	end
+	local swingAngle = if currentCombo == 1 then math.rad(110) else math.rad(75)
+	local sideAngle = if currentCombo == 1 then math.rad(-35) else math.rad(35)
+	startSwing(rightShoulder, CFrame.Angles(swingAngle, sideAngle, 0))
 
-	if waist then
-		local twist = if currentCombo == 1 then math.rad(25) else math.rad(-25)
-		waist.Transform = CFrame.Angles(0, twist, 0)
-		task.delay(0.18, function()
-			if waist then
-				waist.Transform = CFrame.identity
-			end
-		end)
-	end
+	local twist = if currentCombo == 1 then math.rad(25) else math.rad(-25)
+	startSwing(waist, CFrame.Angles(0, twist, 0))
 
 	-- Create Anime Cel-Shaded Crescent Slash Arc in front of character
 	local flatAim = Vector3.new(aimPoint.X, rootPart.Position.Y, aimPoint.Z)

@@ -17,7 +17,8 @@
  ┃  ┗ (ตั้งค่าสว่างคมชัด ClockTime = 14.5, Brightness = 2.2)
  ┃
  ┣ 📂 ReplicatedStorage                <-- [โซนกลาง: เห็นทั้ง Client และ Server]
- ┃  ┣ 📜 _ARCHITECTURE (ModuleScript)  <-- โน้ตสรุปโครงสร้างเกมใน Studio
+ ┃  ┣ 📜 _ARCHITECTURE DON (ModuleScript) <-- โน้ต + CHANGELOG ของ DON (chwwy)
+ ┃  ┣ 📜 _ARCHITECTURE WEE (ModuleScript) <-- โน้ต + CHANGELOG ของ WEE (Weerapap3006)
  ┃  ┣ 📂 Remotes                       <-- โฟลเดอร์เก็บท่อส่งข้อมูล (RemoteEvents)
  ┃  ┃  ┗ ⚡ CombatRemote (RemoteEvent)  <-- สายส่งข้อมูลระบบต่อสู้
  ┃  ┗ 📂 Modules                       <-- โฟลเดอร์เก็บข้อมูลกลางที่ใช้ร่วมกัน
@@ -45,15 +46,22 @@
    * **จุดที่ปรับแก้บ่อย:**
      * `BASE_OFFSET`: มุมก้มเงยและทิศทางของกล้อง (`Vector3.new(25, 35, 25)`)
      * `FIELD_OF_VIEW`: ความแบนของมุมมอง Isometric (ค่าเริ่มต้น `40`)
-     * `MIN_ZOOM_DISTANCE` / `MAX_ZOOM_DISTANCE`: ระยะซูมใกล้สุด (`20`) และไกลสุด (`90`)
+     * `MIN_ZOOM_DISTANCE` / `MAX_ZOOM_DISTANCE`: ระยะซูมใกล้สุด (`20`) และไกลสุด (`50`)
      * `FOLLOW_SMOOTH_SPEED` / `ZOOM_SMOOTH_SPEED`: ความนุ่มนวลเวลาเดินและซูม
 
 2. **`CombatClient` (`LocalScript`)**
    * **หน้าที่:**
      * ยิง Raycast จากกล้องผ่านตำแหน่งเมาส์ลงพื้น เพื่อหมุนตัวละคร (`HumanoidRootPart`) ให้หันหน้าตามเมาส์ตลอดเวลา
      * ดักจับการคลิกซ้าย (`MouseButton1`) เช็คคูลดาวน์เบื้องต้น แล้วเล่นท่าฟันสลับซ้าย-ขวา พร้อมสร้างคลื่นดาบ `SlashArcVFX` ทันที
+     * ท่าฟัน = เหวี่ยงแขน (`RightShoulder`) + บิดเอว (`Waist`) ด้วย `Motor6D.Transform` ซึ่งต้องเขียนซ้ำทุกเฟรมใน `RunService.PreSimulation` (รันหลัง Animator ไม่งั้นท่าเดิน/ยืนจะทับจนมองไม่เห็น) ซ้อนบนท่าเดิมแล้วกลับที่เดิมเอง
      * ส่งคำสั่ง `CombatRemote:FireServer("BasicSlash", aimPoint)` ไปให้ Server
      * รอรับสัญญาณ `DamageDealt` จาก Server เพื่อแสดงตัวเลขดาเมจเด้ง (`BillboardGui`) และไฟกระพริบที่ตัวมอนสเตอร์
+     * รอรับสัญญาณ `ReplicateSlash` เพื่อเล่นท่าฟัน + คลื่นดาบของผู้เล่นคนอื่น
+   * **จุดที่ปรับแก้บ่อย:**
+     * `SWING_DURATION`: เวลาเหวี่ยงออกแล้วกลับของท่าฟัน (ค่าเริ่มต้น `0.18` วิ)
+     * `swingAngle` / `sideAngle` / `twist` ใน `playSlashVFX`: องศาเหวี่ยงแขนและบิดเอวของแต่ละจังหวะคอมโบ
+     * สี / ขนาดคลื่นดาบ: `slashPart.Color` และ `Size` ใน tween ของ `playSlashVFX`
+     * สี / ขนาดตัวเลขดาเมจ: `label.TextColor3` และ `billboard.Size` ใน `showHitFeedback`
 
 ---
 
