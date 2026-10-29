@@ -137,9 +137,10 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 | 🗺️ แมพ → แก้ใน **Roblox Studio** (อยู่ใน Team Create, ไม่ขึ้น GitHub) | 💻 โค้ด → แก้ใน **VS Code** แล้ว push ขึ้น **GitHub** |
 |---|---|
-| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `CombatServer`, `CombatClient`, `CameraScript`, `_ARCHITECTURE DON`, `_ARCHITECTURE WEE` |
+| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, จุดเกิดศัตรู `EnemySpawns`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `EnemyData`, `ItemData`, `CombatServer`, `PlayerData`, `EnemyService`, `CombatClient`, `HudClient`, `InventoryClient`, `_ARCHITECTURE DON`, `_ARCHITECTURE WEE` (รายการเต็มใน [`ARCHITECTURE.md`](ARCHITECTURE.md)) |
 | `StarterPlayer.StarterCharacter` | ถ้าไปแก้สคริปต์พวกนี้ใน Studio จะ**โดน Rojo เขียนทับ**ตอนใครก็ตามกด Connect หรือเซฟไฟล์นั้น |
 | Lighting, Teams, SoundService, หน้าตา UI ใน StarterGui | ลบใน Studio → Rojo สร้างกลับมา, เปลี่ยนชื่อ → ได้ตัวซ้ำ 2 ตัว |
+| | UI ตอนนี้ (แถบเลือด, แถบสกิล, กระเป๋า) **สร้างจากโค้ด** ไม่ได้อยู่ใน StarterGui |
 
 **ของใหม่ใส่ที่ไหน**
 
@@ -147,6 +148,7 @@ git config --global user.email "อีเมล GitHub ของคุณ"
   - ฝั่ง server → `src/ServerScriptService/ชื่อ.server.luau`
   - ฝั่ง client → `src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau`
   - ใช้ร่วมกัน → `src/ReplicatedStorage/Modules/ชื่อ.luau`
+  - โมดูลที่ให้แค่ server ใช้ (client มองไม่เห็น) → `src/ServerStorage/Modules/ชื่อ.luau`
 - **Part / Model / Terrain / แสง / เสียง / หน้าตา UI** → สร้างใน Studio
 - ข้อยกเว้น: LocalScript `Animate` ใน TrainingDummy และ StarterCharacter เป็นสคริปต์ท่าเดินที่ติดมากับหุ่น R15 ปล่อยไว้ในโมเดลได้
 
@@ -169,3 +171,4 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 | CHANGELOG conflict | เกิดบ่อยเพราะต่างคนเพิ่มบรรทัดบนสุด → กด **Accept Both** |
 | Rojo กด Connect ไม่ติด | เช็กว่ายังมี terminal ที่รัน `rojo serve` อยู่ และ `rojo --version` เป็น 7.7.1 |
 | ปลั๊กอินเตือนเวอร์ชันไม่ตรง | ปิด Studio แล้วสั่ง `rojo plugin install` ใหม่ |
+| เข้าเกมแล้วขึ้น "โหลดข้อมูลไม่สำเร็จ" | ปกติใน `game.rbxl` (สำเนาในเครื่องใช้ DataStore ไม่ได้ เล่นได้แต่ไม่เซฟ) ถ้าขึ้นใน Team Create ให้เปิด **Game Settings → Security → Enable Studio Access to API Services** |

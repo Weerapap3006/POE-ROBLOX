@@ -4,15 +4,21 @@
 -- ==========================================
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local combatRemote = remotesFolder:WaitForChild("CombatRemote") :: RemoteEvent
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local SkillData = require(modulesFolder:WaitForChild("SkillData"))
+local PlayerStats = require(modulesFolder:WaitForChild("PlayerStats"))
 
--- Track cooldowns and combo per player on the Server (Anti-Exploit)
-local playerCooldowns: { [Player]: number } = {}
+local serverModules = ServerStorage:WaitForChild("Modules")
+local PlayerData = require(serverModules:WaitForChild("PlayerData"))
+local EnemyService = require(serverModules:WaitForChild("EnemyService"))
+
+-- Track cooldowns (per skill) and combo per player on the Server (Anti-Exploit)
+local playerCooldowns: { [Player]: { [string]: number } } = {}
 local playerComboSteps: { [Player]: number } = {}
 
 Players.PlayerRemoving:Connect(function(player: Player)
@@ -21,7 +27,7 @@ Players.PlayerRemoving:Connect(function(player: Player)
 end)
 
 -- ==========================================
--- HANDLE ATTACK REQUEST FROM CLIENT
+-- HANDLE SKILL REQUEST FROM CLIENT
 -- ==========================================
 combatRemote.OnServerEvent:Connect(function(player: Player, skillId: unknown, targetPosition: unknown)
 	-- 1. Validate arguments sent by Client (Never trust Client input types)
@@ -46,39 +52,51 @@ combatRemote.OnServerEvent:Connect(function(player: Player, skillId: unknown, ta
 	end
 
 	-- 2. Server-side Cooldown Check (Prevents Rapid-Fire / No-Cooldown Exploits)
+	-- Cooldown is shortened by the AttackSpeed stat from equipped items
+	local stats = PlayerData.getStats(player)
+	local cooldowns = playerCooldowns[player] or {}
+	playerCooldowns[player] = cooldowns
 	local now = os.clock()
-	local lastTime = playerCooldowns[player] or 0
+	local cooldown = PlayerStats.getCooldown(skill.Cooldown, stats.AttackSpeed)
 	-- Allow slight network tolerance (0.05s) for ping jitter
-	if now - lastTime < (skill.Cooldown - 0.05) then
+	if now - (cooldowns[skillId] or 0) < (cooldown - 0.05) then
 		return
 	end
-	playerCooldowns[player] = now
+	cooldowns[skillId] = now
 
-	-- Track combo step for visual replication to other players
+	-- Track combo step (BasicSlash alternates left/right swings) for visual replication to other players
 	local step = playerComboSteps[player] or 1
-	playerComboSteps[player] = if step == 1 then 2 else 1
-	combatRemote:FireAllClients("ReplicateSlash", character, targetPosition, step)
+	if skillId == "BasicSlash" then
+		playerComboSteps[player] = if step == 1 then 2 else 1
+	end
+	combatRemote:FireAllClients("ReplicateSkill", character, skillId, targetPosition, step)
 
 	-- 3. Server-side Hitbox Detection (Prevents Kill-Aura / Reach Exploits)
-	local flatAim = Vector3.new(targetPosition.X, rootPart.Position.Y, targetPosition.Z)
-	local aimDir = flatAim - rootPart.Position
-	local lookCF = if aimDir.Magnitude > 0.05
-		then CFrame.lookAt(rootPart.Position, flatAim)
-		else rootPart.CFrame
-
-	local hitboxCFrame = lookCF * CFrame.new(0, 0, -skill.HitboxForwardOffset)
-
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 	overlapParams.FilterDescendantsInstances = { character }
 
-	local partsInBox = workspace:GetPartBoundsInBox(hitboxCFrame, skill.HitboxSize, overlapParams)
+	local partsInBox: { BasePart }
+	if skill.Shape == "Radius" then
+		-- Circle around the character (SpinSlash)
+		partsInBox = workspace:GetPartBoundsInRadius(rootPart.Position, skill.Radius or 0, overlapParams)
+	else
+		-- Box in front of the character, facing the aim point (BasicSlash)
+		local flatAim = Vector3.new(targetPosition.X, rootPart.Position.Y, targetPosition.Z)
+		local aimDir = flatAim - rootPart.Position
+		local lookCF = if aimDir.Magnitude > 0.05
+			then CFrame.lookAt(rootPart.Position, flatAim)
+			else rootPart.CFrame
 
-	-- Collect unique enemy models hit by this swing
+		local hitboxCFrame = lookCF * CFrame.new(0, 0, -(skill.HitboxForwardOffset or 0))
+		partsInBox = workspace:GetPartBoundsInBox(hitboxCFrame, skill.HitboxSize or Vector3.one, overlapParams)
+	end
+
+	-- Collect unique enemy models hit by this skill (other players are skipped: co-op, no friendly fire)
 	local hitModels: { [Model]: Humanoid } = {}
 	for _, part in ipairs(partsInBox) do
 		local model = part:FindFirstAncestorOfClass("Model")
-		if model and model ~= character and not hitModels[model] then
+		if model and model ~= character and not hitModels[model] and not Players:GetPlayerFromCharacter(model) then
 			local enemyHumanoid = model:FindFirstChildOfClass("Humanoid")
 			if enemyHumanoid and enemyHumanoid.Health > 0 then
 				hitModels[model] = enemyHumanoid
@@ -88,19 +106,22 @@ combatRemote.OnServerEvent:Connect(function(player: Player, skillId: unknown, ta
 
 	-- 4. Server-side Damage Calculation & Health Reduction
 	for enemyModel, enemyHumanoid in pairs(hitModels) do
-		local baseDamage = math.random(skill.MinDamage, skill.MaxDamage)
+		local baseDamage = math.random(skill.MinDamage, skill.MaxDamage) + stats.FlatDamage
 		local isCrit = math.random() < skill.CritChance
 		local finalDamage = if isCrit then math.round(baseDamage * skill.CritMultiplier) else baseDamage
 
-		enemyHumanoid:TakeDamage(finalDamage)
+		-- Enemies spawned by EnemyService handle their own death (EXP, loot, respawn)
+		if not EnemyService.applyDamage(enemyModel, finalDamage, player) then
+			enemyHumanoid:TakeDamage(finalDamage)
 
-		-- Auto-respawn TrainingDummy when its HP reaches 0 so you can keep testing
-		if enemyHumanoid.Health <= 0 and enemyModel.Name == "TrainingDummy" then
-			task.delay(1.2, function()
-				if enemyHumanoid and enemyHumanoid.Parent then
-					enemyHumanoid.Health = enemyHumanoid.MaxHealth
-				end
-			end)
+			-- Auto-respawn TrainingDummy when its HP reaches 0 so you can keep testing
+			if enemyHumanoid.Health <= 0 and enemyModel.Name == "TrainingDummy" then
+				task.delay(1.2, function()
+					if enemyHumanoid and enemyHumanoid.Parent then
+						enemyHumanoid.Health = enemyHumanoid.MaxHealth
+					end
+				end)
+			end
 		end
 
 		-- 5. Notify Clients to show Floating Damage Numbers & Hit Flash

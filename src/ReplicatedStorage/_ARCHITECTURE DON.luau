@@ -9,33 +9,56 @@
 
 1. โครงสร้างโฟลเดอร์หลัก (EXPLORER STRUCTURE):
    - Workspace  [แมพ: แก้ใน Studio, อยู่ใน Team Create, ไม่ขึ้น GitHub]
-     └── Enemies
-          └── TrainingDummy (Model) : หุ่นซ้อมมือ R15 (HP 500, รีเลือดอัตโนมัติเมื่อตาย)
+     ├── Enemies : ศัตรูทั้งหมด (EnemyService สร้างตอนเริ่มเกม)
+     │    └── TrainingDummy (Model) : หุ่นซ้อมมือ R15 (HP 500, รีเลือดเอง, ไม่ให้ EXP/ของ)
+     ├── EnemySpawns (ไม่บังคับ) : Part จุดเกิดศัตรู ชื่อ Grunt / Brute (ไม่มี = ใช้ด่านเริ่มต้น)
+     └── Drops : ของที่ดรอปบนพื้น (โค้ดสร้างตอนเล่น)
 
    - ReplicatedStorage (โซนกลาง: เห็นทั้ง Client และ Server)
      ├── _ARCHITECTURE DON (ModuleScript) : โน้ตของ DON / chwwy (ไฟล์นี้)
      ├── _ARCHITECTURE WEE (ModuleScript) : โน้ตของ WEE / Weerapap3006
      ├── Remotes
-     │    └── CombatRemote (RemoteEvent) : ท่อส่งข้อมูลการโจมตีและผลดาเมจ
+     │    ├── CombatRemote (RemoteEvent) : ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู
+     │    ├── InventoryRemote (RemoteEvent) : สวมใส่/ถอด/ทิ้งของ + ข้อมูลกระเป๋า
+     │    └── NotifyRemote (RemoteEvent) : ข้อความกลางจอ
      └── Modules
-          └── SkillData (ModuleScript) : ตารางเก็บค่า Cooldown, Damage, Crit, HitboxSize
+          ├── SkillData : ค่าสกิล ฟัน / หมุนฟัน
+          ├── EnemyData : ค่าศัตรู ภูตหิน / บอสยักษ์หิน (เลือด, ท่าตี, EXP, ดรอป)
+          ├── ItemData : ไอเทม, affix, ความหายาก
+          ├── PlayerStats : เลือด/ดาเมจต่อเลเวล, EXP ที่ต้องใช้
+          └── Ui : สี/ฟอนต์/ตัวช่วยสร้าง UI
 
    - ServerScriptService (โซน Server: ปลอดภัย 100% กันโปรโกง)
-     └── CombatServer (Script) : ตรวจ Cooldown จริง, สร้าง Hitbox, คำนวณดาเมจ, ลดเลือดศัตรู
+     ├── CombatServer (Script) : ตรวจ Cooldown จริง, สร้าง Hitbox, คำนวณดาเมจ
+     ├── EnemyServer (Script) : เริ่ม EnemyService
+     └── PlayerDataServer (Script) : เริ่ม PlayerData
+
+   - ServerStorage.Modules (โมดูลฝั่ง Server)
+     ├── PlayerData : เลเวล, EXP, กระเป๋า, เซฟ/โหลด DataStore
+     ├── EnemyService : เกิดศัตรู, AI, ตาย -> EXP + ดรอป, เกิดใหม่
+     └── Loot : สุ่มไอเทม, วางของบนพื้นให้เก็บ
 
    - StarterPlayer (ตั้งค่าตัวละครและสคริปต์ฝั่งผู้เล่น)
      ├── StarterCharacter (Model) : หุ่นพื้นฐาน R15 Anime Base + CelShadeOutline (Highlight)
      │                               [แมพ: แก้ใน Studio, อยู่ใน Team Create, ไม่ขึ้น GitHub]
      └── StarterPlayerScripts
           ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมด้วยลูกกลิ้ง
-          └── CombatClient (LocalScript) : หันหน้าตามเมาส์, รับคลิกซ้าย, เล่น VFX, เลขดาเมจเด้ง
+          ├── CombatClient (LocalScript) : เล็ง, กดสกิล, แถบสกิล, VFX, เตือนท่าศัตรู, เลขดาเมจ
+          ├── HudClient (LocalScript) : แถบเลือด/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
+          └── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด I)
 
 ------------------------------------------------------------------------------
 2. อยากแก้ค่าอะไร ให้ไปที่ไฟล์ไหน? (QUICK EDIT GUIDE):
    - แก้มุมกล้อง / ความเร็วกล้อง / ระยะซูม   --> StarterPlayerScripts.CameraScript
    - แก้ความแรงสกิล / คูลดาวน์ / ระยะฟัน     --> ReplicatedStorage.Modules.SkillData
-   - แก้สีเอฟเฟกต์ / ขนาดตัวเลขดาเมจ        --> StarterPlayerScripts.CombatClient
+   - แก้เลือด / ความเร็ว / ดาเมจ / ดรอปของศัตรู --> ReplicatedStorage.Modules.EnemyData
+   - เพิ่มไอเทม / affix / ช่วงค่าที่สุ่ม       --> ReplicatedStorage.Modules.ItemData
+   - แก้เลือดเริ่มต้น / เลเวลอัป / EXP         --> ReplicatedStorage.Modules.PlayerStats
+   - แก้สีเอฟเฟกต์ / ขนาดตัวเลขดาเมจ / ปุ่มสกิล --> StarterPlayerScripts.CombatClient
+   - แก้สี UI ทั้งเกม                       --> ReplicatedStorage.Modules.Ui
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox    --> ServerScriptService.CombatServer
+   - แก้ AI ศัตรู / รูปร่างศัตรู / ด่านเริ่มต้น  --> ServerStorage.Modules.EnemyService
+   - แก้ขนาดกระเป๋า / ระบบเซฟ                --> ServerStorage.Modules.PlayerData
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน     --> StarterPlayer.StarterCharacter (แก้ใน Studio)
 
 ------------------------------------------------------------------------------
@@ -43,11 +66,16 @@
    [โค้ด: ห้ามแก้ใน Studio] มีไฟล์ใน src/ -> Rojo เขียนทับเสมอ ต้องแก้ที่ไฟล์แล้ว push ขึ้น GitHub
    - ReplicatedStorage._ARCHITECTURE DON          --> src/ReplicatedStorage/_ARCHITECTURE DON.luau
    - ReplicatedStorage._ARCHITECTURE WEE          --> src/ReplicatedStorage/_ARCHITECTURE WEE.luau
-   - ReplicatedStorage.Modules.SkillData          --> src/ReplicatedStorage/Modules/SkillData.luau
-   - ReplicatedStorage.Remotes.CombatRemote       --> src/ReplicatedStorage/Remotes/CombatRemote.model.json
-   - ServerScriptService.CombatServer             --> src/ServerScriptService/CombatServer.server.luau
-   - StarterPlayerScripts.CameraScript            --> src/StarterPlayer/StarterPlayerScripts/CameraScript.client.luau
-   - StarterPlayerScripts.CombatClient            --> src/StarterPlayer/StarterPlayerScripts/CombatClient.client.luau
+   - ReplicatedStorage.Modules.*                  --> src/ReplicatedStorage/Modules/ชื่อ.luau
+       (SkillData, EnemyData, ItemData, PlayerStats, Ui)
+   - ReplicatedStorage.Remotes.*                  --> src/ReplicatedStorage/Remotes/ชื่อ.model.json
+       (CombatRemote, InventoryRemote, NotifyRemote)
+   - ServerScriptService.*                        --> src/ServerScriptService/ชื่อ.server.luau
+       (CombatServer, EnemyServer, PlayerDataServer)
+   - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
+       (PlayerData, EnemyService, Loot)
+   - StarterPlayerScripts.*                       --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
+       (CameraScript, CombatClient, HudClient, InventoryClient)
 
    จังหวะที่โดนทับ:
    - ตอนกด Connect ใน Rojo: Studio ถูกทำให้ตรงกับไฟล์ทั้งหมด
@@ -61,6 +89,8 @@
    - StarterPlayer.StarterCharacter
    - Lighting, Teams, SoundService และ service อื่นที่ไม่อยู่ใน default.project.json
    - หน้าตา UI (ScreenGui/Frame/ปุ่ม) ใน StarterGui
+     (ตอนนี้ UI ของ MVP ทั้งหมดสร้างจากโค้ดใน HudClient / InventoryClient / CombatClient
+      StarterGui ยังว่าง -> อยากแก้หน้าตา UI ปัจจุบันต้องแก้ในโค้ด)
    * แมพเก็บอยู่ใน Team Create เท่านั้น (ย้อนเวอร์ชันได้ที่ File -> Version History)
    * ถ้าวันหลังมีไฟล์ชื่อเดียวกันเพิ่มใน src/ ของใน Studio จะโดนทับ
 
@@ -69,6 +99,7 @@
        ฝั่ง server      --> src/ServerScriptService/ชื่อ.server.luau
        ฝั่ง client      --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
        ใช้ร่วมกัน       --> src/ReplicatedStorage/Modules/ชื่อ.luau
+       โมดูลฝั่ง server --> src/ServerStorage/Modules/ชื่อ.luau (client มองไม่เห็น)
        (สคริปต์ของปุ่ม UI ก็ใส่ฝั่ง client แล้วไปหา UI ผ่าน PlayerGui)
    - Part / Model / Terrain / แสง / เสียง / หน้าตา UI -> สร้างใน Studio
    - ข้อยกเว้น: LocalScript "Animate" ใน TrainingDummy และ StarterCharacter
@@ -82,6 +113,11 @@
    - StarterCharacter ต้องมี HumanoidRootPart (กล้องตาม) และเป็น R15
      (RightUpperArm.RightShoulder, UpperTorso.Waist) ไม่งั้นท่าฟันไม่ขยับ
    - ห้ามสร้าง Remotes / Modules ใน Studio เอง (มาจากโค้ดทั้งหมด)
+   - ด่าน: ใส่ Part ใน Workspace.EnemySpawns ตรงจุดที่อยากให้ศัตรูเกิด
+     ชื่อ Part = ชนิดศัตรูใน EnemyData (Grunt / Brute) หรือใส่ Attribute EnemyType
+     ไม่มีโฟลเดอร์นี้ = โค้ดวางด่านเริ่มต้นรอบ SpawnLocation (ลูกสมุน 6 + บอส 1)
+     เหนือ Part 10 studs ห้ามมีหลังคา (ศัตรูยิง Raycast หาพื้นจากตรงนั้น)
+   - ศัตรูเดินตรงเข้าหาผู้เล่น (ไม่มี pathfinding) ทางเดินต้องโล่งและกว้างพอให้บอส (~6 studs)
 
 ------------------------------------------------------------------------------
 4. วิธีทำงานร่วมกัน 2 คน (TEAM WORKFLOW: Team Create + Git + Rojo):
@@ -109,10 +145,29 @@
 ------------------------------------------------------------------------------
 5. ปัญหาที่รู้แล้ว ยังไม่ได้แก้ (KNOWN ISSUES):
    - Workspace.Script1: สคริปต์ว่าง 3 ตัว (print "Hello world!") ปนอยู่ในแมพ -> ลบทิ้งใน Studio
+   - DataStore ใช้ไม่ได้ใน game.rbxl (สำเนาในเครื่อง) -> ขึ้น "โหลดข้อมูลไม่สำเร็จ" เป็นเรื่องปกติ
+     เทสการเซฟใน Team Create + เปิด Game Settings -> Security -> Enable Studio Access to API Services
+   - Highlight แสดงพร้อมกันได้สูงสุด 31 อัน (ศัตรู + ผู้เล่น + คลื่นดาบ) ศัตรูเยอะเกิน เส้นขอบจะหาย
+   - ศัตรูยังไม่มีท่าเดิน (Blockout เลื่อนไปเฉยๆ), ไม่มี pathfinding, เลือดไม่ปรับตามจำนวนผู้เล่น
+   - ยังไม่ได้ปรับบาลานซ์: ค่าดาเมจ, เลือดศัตรู, EXP และอัตราดรอปเป็นค่าตั้งต้นคร่าวๆ
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-29]
+   - MVP เวอร์ชันแรก (ตามเอกสารแผน Project poe หัวข้อ 3):
+     + สกิลที่ 2 หมุนฟัน (SpinSlash: คลิกขวา / Q, วงรอบตัว) + แถบสกิลแสดงคูลดาวน์
+       + มือถือ: ปุ่มสกิลแตะได้, เล็งศัตรูใกล้สุดเอง / กดค้างตีต่อเนื่องได้ทุกสกิล
+         (รวมการกดค้างของ WEE commit 067d4fc เข้าโค้ดใหม่, Cooldown ฟัน 0.15 -> 0.55)
+     + ศัตรู 2 ชนิด (EnemyData + EnemyService): ภูตหิน (ตีใกล้) + บอสยักษ์หิน (ทุบเป็นวง)
+       AI ไล่/ตี/กลับบ้าน, เตือนก่อนโดนตี, ตาย -> EXP + ดรอป, เกิดใหม่, บอสตาย = เคลียร์ด่าน
+     + ไอเทม (ItemData + Loot): ดาบเหล็ก / เสื้อเกราะหนัง, affix ดาเมจ / เลือด / ความเร็วโจมตี
+       3 ระดับความหายาก, ดรอปบนพื้นกด E เก็บ
+     + กระเป๋า (InventoryClient + PlayerData): 20 ช่อง, สวมใส่/ถอด/ทิ้ง, Server ตัดสินทั้งหมด
+     + เลเวล/EXP (PlayerStats) + เซฟ DataStore (โหลดพลาด = ไม่เซฟทับ, autosave 2 นาที)
+     + HUD: แถบเลือด/EXP, แถบเลือดศัตรู, แถบบอส, ข้อความ, หน้าจอตาย
+     + CombatServer: คูลดาวน์แยกตามสกิล, หักความเร็วโจมตี, ดาเมจ + FlatDamage,
+       ไม่ตีโดนผู้เล่นด้วยกัน (เดิมฟันโดนเพื่อนได้), ReplicateSlash -> ReplicateSkill
+     + ARCHITECTURE.md เขียนใหม่ทั้งไฟล์ให้ตรงระบบใหม่
    - ARCHITECTURE.md: อัปเดตให้ตรงโค้ด -> _ARCHITECTURE DON/WEE, ท่าฟัน PreSimulation + จุดปรับแก้ของ
      CombatClient, ReplicateSlash, MAX_ZOOM_DISTANCE 90 -> 50 (โค้ดเป็น 50 มาตั้งแต่แรก)
    - CombatClient: แก้ท่าฟันที่มองไม่เห็น -> ใส่ท่าเหวี่ยงแขน/บิดเอวซ้ำทุกเฟรมใน RunService.PreSimulation

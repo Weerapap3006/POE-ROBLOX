@@ -1,0 +1,429 @@
+-- ==========================================
+-- INVENTORY CLIENT (Inventory window: view items, equip / unequip / discard)
+-- Path: StarterPlayer.StarterPlayerScripts.InventoryClient
+-- ==========================================
+-- The server owns the inventory. This script only shows the last "Sync" and sends requests
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+
+local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+local inventoryRemote = remotesFolder:WaitForChild("InventoryRemote") :: RemoteEvent
+
+local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
+local ItemData = require(modulesFolder:WaitForChild("ItemData"))
+local Ui = require(modulesFolder:WaitForChild("Ui"))
+
+-- ==========================================
+-- CONFIGURATION
+-- ==========================================
+local TOGGLE_KEY = Enum.KeyCode.I
+local GRID_COLUMNS = 5
+local CELL_SIZE = 54
+local CELL_GAP = 6
+local SIDE_WIDTH = 200
+local CONTENT_HEIGHT = 240
+local GRID_WIDTH = GRID_COLUMNS * CELL_SIZE + (GRID_COLUMNS - 1) * CELL_GAP
+local WINDOW_WIDTH = 12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12 + SIDE_WIDTH + 12
+local WINDOW_HEIGHT = 48 + CONTENT_HEIGHT + 12
+
+-- ==========================================
+-- STATE (replaced by every "Sync" from the server)
+-- ==========================================
+local inventory: { ItemData.Item } = {}
+local equipped: { [string]: ItemData.Item } = {}
+local capacity = 20
+local selectedId: string? = nil
+local confirmingDiscard = false
+
+local isTouchOnly = Ui.isTouchOnly()
+
+-- Returns the item and, if it's equipped, which slot it's in
+local function findItem(itemId: string?): (ItemData.Item?, string?)
+	if not itemId then
+		return nil, nil
+	end
+	for _, item in ipairs(inventory) do
+		if item.Id == itemId then
+			return item, nil
+		end
+	end
+	for slot, item in pairs(equipped) do
+		if item.Id == itemId then
+			return item, slot
+		end
+	end
+	return nil, nil
+end
+
+local function getRarityColor(item: ItemData.Item): Color3
+	local rarity = ItemData.Rarities[item.Rarity]
+	return if rarity then rarity.Color else Ui.Colors.Text
+end
+
+-- ==========================================
+-- 1. WINDOW LAYOUT (equipped + stats | item grid | item details)
+-- ==========================================
+local gui = Ui.screenGui("Inventory", 5)
+
+-- PC: bottom-right. Mobile: top-right (bottom corners are the thumbstick and jump button)
+local toggleButton = Ui.button({
+	Name = "ToggleButton",
+	AnchorPoint = if isTouchOnly then Vector2.new(1, 0) else Vector2.new(1, 1),
+	Position = if isTouchOnly then UDim2.new(1, -12, 0, 8) else UDim2.new(1, -16, 1, -16),
+	Size = UDim2.fromOffset(130, 40),
+	BackgroundColor3 = Ui.Colors.Panel,
+	BackgroundTransparency = 0.15,
+	Text = if isTouchOnly then "กระเป๋า" else "กระเป๋า [I]",
+	Parent = gui,
+}, { Ui.corner(8), Ui.stroke(Ui.Colors.Accent, 2) })
+
+local window = Ui.new("Frame", {
+	Name = "Window",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromOffset(WINDOW_WIDTH, WINDOW_HEIGHT),
+	BackgroundColor3 = Ui.Colors.Panel,
+	BackgroundTransparency = 0.05,
+	Active = true, -- Clicks on the window don't fall through and attack
+	Visible = false,
+	Parent = gui,
+}, { Ui.corner(10), Ui.stroke(Ui.Colors.Accent, 2) })
+
+-- Shrink the window to fit small (phone) screens
+local uiScale = Ui.new("UIScale", { Parent = window })
+local function updateScale()
+	local viewport = workspace.CurrentCamera.ViewportSize
+	uiScale.Scale = math.min(1, (viewport.X - 20) / WINDOW_WIDTH, (viewport.Y - 20) / WINDOW_HEIGHT)
+end
+updateScale()
+workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+
+Ui.text({
+	Position = UDim2.fromOffset(16, 8),
+	Size = UDim2.new(1, -80, 0, 32),
+	Text = "กระเป๋า",
+	TextSize = 22,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = window,
+})
+local closeButton = Ui.button({
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -10, 0, 8),
+	Size = UDim2.fromOffset(32, 32),
+	Text = "X",
+	Parent = window,
+}, { Ui.corner(6) })
+
+local function column(x: number, width: number): Frame
+	return Ui.new("Frame", {
+		Position = UDim2.fromOffset(x, 48),
+		Size = UDim2.fromOffset(width, CONTENT_HEIGHT),
+		BackgroundTransparency = 1,
+		Parent = window,
+	})
+end
+
+local leftColumn = column(12, SIDE_WIDTH)
+local gridColumn = column(12 + SIDE_WIDTH + 12, GRID_WIDTH)
+local detailColumn = column(12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12, SIDE_WIDTH)
+
+-- Left: equipped slots
+Ui.text({
+	Size = UDim2.new(1, 0, 0, 20),
+	Text = "สวมใส่อยู่",
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = leftColumn,
+})
+local slotButtons: { [string]: TextButton } = {}
+for index, slot in ipairs(ItemData.Slots) do
+	slotButtons[slot] = Ui.button({
+		Name = slot,
+		Position = UDim2.fromOffset(0, 24 + (index - 1) * 58),
+		Size = UDim2.new(1, 0, 0, 52),
+		TextSize = 15,
+		TextWrapped = true,
+		Parent = leftColumn,
+	}, { Ui.corner(6) })
+end
+
+-- Left: stats summary (from player attributes set by the server)
+local statsLabel = Ui.text({
+	Position = UDim2.fromOffset(0, 24 + #ItemData.Slots * 58 + 6),
+	Size = UDim2.new(1, 0, 0, 100),
+	TextSize = 15,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	Text = "",
+	Parent = leftColumn,
+})
+
+-- Middle: item grid (scrolls if capacity grows past what fits)
+local grid = Ui.new("ScrollingFrame", {
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 4,
+	CanvasSize = UDim2.new(),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ScrollingDirection = Enum.ScrollingDirection.Y,
+	Parent = gridColumn,
+}, {
+	Ui.new("UIGridLayout", {
+		CellSize = UDim2.fromOffset(CELL_SIZE, CELL_SIZE),
+		CellPadding = UDim2.fromOffset(CELL_GAP, CELL_GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
+
+-- Right: details of the selected item
+local detailName = Ui.text({
+	Size = UDim2.new(1, 0, 0, 44),
+	TextSize = 18,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "",
+	Parent = detailColumn,
+})
+local detailInfo = Ui.text({
+	Position = UDim2.fromOffset(0, 44),
+	Size = UDim2.new(1, 0, 0, 20),
+	TextSize = 14,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "",
+	Parent = detailColumn,
+})
+local detailLines = Ui.text({
+	Position = UDim2.fromOffset(0, 70),
+	Size = UDim2.new(1, 0, 0, 100),
+	TextSize = 15,
+	TextWrapped = true,
+	RichText = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	Text = "",
+	Parent = detailColumn,
+})
+local actionButton = Ui.button({
+	Position = UDim2.new(0, 0, 1, -82),
+	Size = UDim2.new(1, 0, 0, 36),
+	BackgroundColor3 = Color3.fromRGB(40, 110, 70),
+	Text = "",
+	Parent = detailColumn,
+}, { Ui.corner(6) })
+local discardButton = Ui.button({
+	Position = UDim2.new(0, 0, 1, -38),
+	Size = UDim2.new(1, 0, 0, 36),
+	BackgroundColor3 = Color3.fromRGB(110, 40, 40),
+	Text = "",
+	Parent = detailColumn,
+}, { Ui.corner(6) })
+
+-- ==========================================
+-- 2. RENDERING (rebuilt from state after every change)
+-- ==========================================
+local render: () -> ()
+
+local function selectItem(itemId: string?)
+	selectedId = itemId
+	confirmingDiscard = false
+	render()
+end
+
+local function renderGrid()
+	for _, child in ipairs(grid:GetChildren()) do
+		if child:IsA("GuiButton") then
+			child:Destroy()
+		end
+	end
+
+	for index = 1, capacity do
+		local item = inventory[index]
+		local isSelected = item ~= nil and item.Id == selectedId
+		local cell = Ui.button({
+			LayoutOrder = index,
+			BackgroundColor3 = if isSelected then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6) else Ui.Colors.PanelLight,
+			Text = if item then ItemData.getName(item) else "",
+			TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim,
+			TextScaled = true,
+			TextWrapped = true,
+			AutoButtonColor = item ~= nil,
+			Parent = grid,
+		}, {
+			Ui.corner(6),
+			Ui.stroke(if item then getRarityColor(item) else Ui.Colors.Stroke, if isSelected then 3 else 1),
+			Ui.new("UIPadding", {
+				PaddingLeft = UDim.new(0, 3),
+				PaddingRight = UDim.new(0, 3),
+				PaddingTop = UDim.new(0, 3),
+				PaddingBottom = UDim.new(0, 3),
+			}),
+		})
+		if item then
+			cell.Activated:Connect(function()
+				selectItem(item.Id)
+			end)
+		end
+	end
+end
+
+local function renderEquipped()
+	for slot, button in pairs(slotButtons) do
+		local item = equipped[slot]
+		local slotName = ItemData.SlotNames[slot] or slot
+		button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName .. "\n— ว่าง —"
+		button.TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim
+		button.BackgroundColor3 = if item and item.Id == selectedId
+			then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
+			else Ui.Colors.PanelLight
+	end
+end
+
+local function renderStats()
+	statsLabel.Text = string.format(
+		"Lv %d\nเลือดสูงสุด %d\nดาเมจเพิ่ม +%d\nความเร็วโจมตี +%d%%",
+		player:GetAttribute("Level") or 1,
+		player:GetAttribute("MaxHealth") or 100,
+		player:GetAttribute("FlatDamage") or 0,
+		player:GetAttribute("AttackSpeed") or 0
+	)
+end
+
+local function renderDetails()
+	local item, equippedSlot = findItem(selectedId)
+	if not item then
+		detailName.Text = "เลือกไอเทมเพื่อดูรายละเอียด"
+		detailName.TextColor3 = Ui.Colors.TextDim
+		detailInfo.Text = ""
+		detailLines.Text = ""
+		actionButton.Visible = false
+		discardButton.Visible = false
+		return
+	end
+
+	local base = ItemData.Bases[item.Base]
+	local rarity = ItemData.Rarities[item.Rarity]
+	detailName.Text = ItemData.getName(item)
+	detailName.TextColor3 = getRarityColor(item)
+	detailInfo.Text = string.format(
+		"%s · %s",
+		if rarity then rarity.Name else item.Rarity,
+		if base then ItemData.SlotNames[base.Slot] or base.Slot else "?"
+	)
+
+	-- Implicit lines in grey, rolled affixes in the Magic blue
+	local implicitLines, affixLines = ItemData.getLines(item)
+	local lines = {}
+	for _, line in ipairs(implicitLines) do
+		table.insert(lines, string.format('<font color="#%s">%s</font>', Ui.Colors.TextDim:ToHex(), line))
+	end
+	for _, line in ipairs(affixLines) do
+		table.insert(lines, string.format('<font color="#%s">%s</font>', ItemData.Rarities.Magic.Color:ToHex(), line))
+	end
+	detailLines.Text = table.concat(lines, "\n")
+
+	actionButton.Visible = true
+	actionButton.Text = if equippedSlot then "ถอด" else "สวมใส่"
+	-- Equipped items must be taken off before they can be thrown away
+	discardButton.Visible = equippedSlot == nil
+	discardButton.Text = if confirmingDiscard then "กดอีกครั้งเพื่อยืนยัน" else "ทิ้ง"
+end
+
+function render()
+	renderGrid()
+	renderEquipped()
+	renderStats()
+	renderDetails()
+end
+
+-- ==========================================
+-- 3. BUTTONS & REQUESTS TO THE SERVER
+-- ==========================================
+for slot, button in pairs(slotButtons) do
+	button.Activated:Connect(function()
+		local item = equipped[slot]
+		selectItem(if item then item.Id else nil)
+	end)
+end
+
+actionButton.Activated:Connect(function()
+	local item, equippedSlot = findItem(selectedId)
+	if not item then
+		return
+	end
+	if equippedSlot then
+		inventoryRemote:FireServer("Unequip", equippedSlot)
+	else
+		inventoryRemote:FireServer("Equip", item.Id)
+	end
+end)
+
+discardButton.Activated:Connect(function()
+	local item, equippedSlot = findItem(selectedId)
+	if not item or equippedSlot then
+		return
+	end
+	if confirmingDiscard then
+		inventoryRemote:FireServer("Discard", item.Id)
+		selectedId = nil
+		confirmingDiscard = false
+	else
+		confirmingDiscard = true
+	end
+	render()
+end)
+
+local function setOpen(open: boolean)
+	window.Visible = open
+	confirmingDiscard = false
+	if open then
+		render()
+	end
+end
+
+toggleButton.Activated:Connect(function()
+	setOpen(not window.Visible)
+end)
+closeButton.Activated:Connect(function()
+	setOpen(false)
+end)
+
+UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
+	if gameProcessedEvent then
+		return
+	end
+	if input.KeyCode == TOGGLE_KEY then
+		setOpen(not window.Visible)
+	end
+end)
+
+player.AttributeChanged:Connect(function()
+	if window.Visible then
+		renderStats()
+	end
+end)
+
+-- ==========================================
+-- 4. SYNC FROM THE SERVER
+-- ==========================================
+inventoryRemote.OnClientEvent:Connect(function(action: string, data: any)
+	if action ~= "Sync" or type(data) ~= "table" then
+		return
+	end
+	inventory = data.Inventory or {}
+	equipped = data.Equipped or {}
+	capacity = data.Capacity or capacity
+	if not findItem(selectedId) then
+		selectedId = nil
+	end
+	if window.Visible then
+		render()
+	end
+end)
+
+-- Ask for the current inventory in case the server's first Sync was sent before this script started
+inventoryRemote:FireServer("RequestSync")
