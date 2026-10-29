@@ -142,9 +142,17 @@ local function buildProfile(data: any, canSave: boolean): Profile
 		end
 	end
 	if type(data.Equipped) == "table" then
+		-- Migrate legacy slot keys ("Weapon" -> "MainHand", "Armor" -> "Cloth")
+		if data.Equipped.Weapon and not data.Equipped.MainHand then
+			data.Equipped.MainHand = data.Equipped.Weapon
+		end
+		if data.Equipped.Armor and not data.Equipped.Cloth then
+			data.Equipped.Cloth = data.Equipped.Armor
+		end
+
 		for _, slot in ipairs(ItemData.Slots) do
 			local item = sanitizeItem(data.Equipped[slot])
-			if item and ItemData.Bases[item.Base].Slot == slot then
+			if item and ItemData.isSlotCompatible(ItemData.Bases[item.Base].Slot, slot) then
 				profile.Equipped[slot] = item
 			end
 		end
@@ -240,7 +248,7 @@ local function equip(profile: Profile, itemId: string)
 		return
 	end
 	local item = profile.Inventory[index]
-	local slot = ItemData.Bases[item.Base].Slot
+	local slot = ItemData.getTargetSlot(ItemData.Bases[item.Base].Slot, profile.Equipped)
 
 	-- Swap: the previously equipped item takes the new item's place in the inventory
 	local previous = profile.Equipped[slot]

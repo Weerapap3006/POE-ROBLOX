@@ -23,8 +23,8 @@ local TOGGLE_KEY = Enum.KeyCode.B
 local GRID_COLUMNS = 5
 local CELL_SIZE = 54
 local CELL_GAP = 6
-local SIDE_WIDTH = 200
-local CONTENT_HEIGHT = 240
+local SIDE_WIDTH = 228
+local CONTENT_HEIGHT = 340
 local GRID_WIDTH = GRID_COLUMNS * CELL_SIZE + (GRID_COLUMNS - 1) * CELL_GAP
 local WINDOW_WIDTH = 12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12 + SIDE_WIDTH + 12
 local WINDOW_HEIGHT = 48 + CONTENT_HEIGHT + 12
@@ -104,8 +104,8 @@ workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateS
 Ui.text({
 	Position = UDim2.fromOffset(16, 8),
 	Size = UDim2.new(1, -80, 0, 32),
-	Text = "กระเป๋า",
-	TextSize = 22,
+	Text = "กระเป๋า & อุปกรณ์สวมใส่ [B]",
+	TextSize = 20,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = window,
 })
@@ -130,31 +130,59 @@ local leftColumn = column(12, SIDE_WIDTH)
 local gridColumn = column(12 + SIDE_WIDTH + 12, GRID_WIDTH)
 local detailColumn = column(12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12, SIDE_WIDTH)
 
--- Left: equipped slots
+-- Left: 9 Equipment Slots Layout
+-- Row 1: Helmet | Amulet
+-- Row 2: MainHand | OffHand
+-- Row 3: Cloth (Full Width)
+-- Row 4: Ring1 | Ring2
+-- Row 5: Special1 | Special2
 Ui.text({
 	Size = UDim2.new(1, 0, 0, 20),
-	Text = "สวมใส่อยู่",
+	Text = "อุปกรณ์สวมใส่ (Equipment)",
+	TextSize = 14,
 	TextColor3 = Ui.Colors.TextDim,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = leftColumn,
 })
+
+local SLOT_LAYOUT: { { Slot: string, Row: number, Col: number, Span: number } } = {
+	{ Slot = "Helmet", Row = 0, Col = 0, Span = 1 },
+	{ Slot = "Amulet", Row = 0, Col = 1, Span = 1 },
+	{ Slot = "MainHand", Row = 1, Col = 0, Span = 1 },
+	{ Slot = "OffHand", Row = 1, Col = 1, Span = 1 },
+	{ Slot = "Cloth", Row = 2, Col = 0, Span = 2 },
+	{ Slot = "Ring1", Row = 3, Col = 0, Span = 1 },
+	{ Slot = "Ring2", Row = 3, Col = 1, Span = 1 },
+	{ Slot = "Special1", Row = 4, Col = 0, Span = 1 },
+	{ Slot = "Special2", Row = 4, Col = 1, Span = 1 },
+}
+
+local SLOT_ROW_HEIGHT = 42
+local SLOT_ROW_GAP = 5
+local HALF_SLOT_W = math.floor((SIDE_WIDTH - 6) / 2)
+
 local slotButtons: { [string]: TextButton } = {}
-for index, slot in ipairs(ItemData.Slots) do
-	slotButtons[slot] = Ui.button({
-		Name = slot,
-		Position = UDim2.fromOffset(0, 24 + (index - 1) * 58),
-		Size = UDim2.new(1, 0, 0, 52),
-		TextSize = 15,
+for _, info in ipairs(SLOT_LAYOUT) do
+	local xOffset = if info.Col == 1 then HALF_SLOT_W + 6 else 0
+	local width = if info.Span == 2 then SIDE_WIDTH else HALF_SLOT_W
+	local yOffset = 22 + info.Row * (SLOT_ROW_HEIGHT + SLOT_ROW_GAP)
+
+	slotButtons[info.Slot] = Ui.button({
+		Name = info.Slot,
+		Position = UDim2.fromOffset(xOffset, yOffset),
+		Size = UDim2.fromOffset(width, SLOT_ROW_HEIGHT),
+		TextSize = 12,
 		TextWrapped = true,
 		Parent = leftColumn,
-	}, { Ui.corner(6) })
+	}, { Ui.corner(6), Ui.stroke(Ui.Colors.Stroke, 1) })
 end
 
 -- Left: stats summary (from player attributes set by the server)
+local statsTopY = 22 + 5 * (SLOT_ROW_HEIGHT + SLOT_ROW_GAP) + 4
 local statsLabel = Ui.text({
-	Position = UDim2.fromOffset(0, 24 + #ItemData.Slots * 58 + 6),
-	Size = UDim2.new(1, 0, 0, 100),
-	TextSize = 15,
+	Position = UDim2.fromOffset(0, statsTopY),
+	Size = UDim2.new(1, 0, 1, -statsTopY),
+	TextSize = 14,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextYAlignment = Enum.TextYAlignment.Top,
 	Text = "",
@@ -199,7 +227,7 @@ local detailInfo = Ui.text({
 })
 local detailLines = Ui.text({
 	Position = UDim2.fromOffset(0, 70),
-	Size = UDim2.new(1, 0, 0, 100),
+	Size = UDim2.new(1, 0, 0, 170),
 	TextSize = 15,
 	TextWrapped = true,
 	RichText = true,
@@ -275,7 +303,7 @@ local function renderEquipped()
 	for slot, button in pairs(slotButtons) do
 		local item = equipped[slot]
 		local slotName = ItemData.SlotNames[slot] or slot
-		button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName .. "\n— ว่าง —"
+		button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName .. "\n— Empty —"
 		button.TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim
 		button.BackgroundColor3 = if item and item.Id == selectedId
 			then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
@@ -285,7 +313,7 @@ end
 
 local function renderStats()
 	statsLabel.Text = string.format(
-		"Lv %d\nเลือดสูงสุด %d\nดาเมจเพิ่ม +%d\nความเร็วโจมตี +%d%%",
+		"Lv %d   |   เลือดสูงสุด %d\nดาเมจเพิ่ม +%d   |   ความเร็วโจมตี +%d%%",
 		player:GetAttribute("Level") or 1,
 		player:GetAttribute("MaxHealth") or 100,
 		player:GetAttribute("FlatDamage") or 0,

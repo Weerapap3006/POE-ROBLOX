@@ -110,9 +110,9 @@
    * **จุดที่ปรับแก้บ่อย:** `BOSS_BAR_RANGE` (ระยะที่แถบบอสขึ้น), `NOTIFY_DURATION`, `MAX_NOTIFICATIONS`
 
 4. **`InventoryClient` (`LocalScript`)**
-   * **หน้าที่:** หน้าต่างกระเป๋า (กด **B** หรือปุ่ม "กระเป๋า") ซ้าย = ของที่สวมใส่ + สเตตัส, กลาง = ช่องของ, ขวา = รายละเอียดไอเทมที่เลือก + ปุ่ม สวมใส่/ถอด/ทิ้ง (ทิ้งต้องกด 2 ครั้ง)
+   * **หน้าที่:** หน้าต่างกระเป๋า (กด **B** หรือปุ่ม "กระเป๋า") ซ้าย = ช่องสวมใส่อุปกรณ์ 9 ช่อง (`Helmet`, `Amulet`, `MainHand`, `OffHand`, `Cloth`, `Ring1`, `Ring2`, `Special1`, `Special2`) + สเตตัส, กลาง = ช่องของ, ขวา = รายละเอียดไอเทมที่เลือก + ปุ่ม สวมใส่/ถอด/ทิ้ง (ทิ้งต้องกด 2 ครั้ง)
    * แค่ **แสดงผล** ข้อมูลล่าสุดที่ Server ส่งมา (`"Sync"`) และส่งคำขอไปให้ Server ตัดสิน
-   * **จุดที่ปรับแก้บ่อย:** `TOGGLE_KEY`, `GRID_COLUMNS`, `CELL_SIZE`
+   * **จุดที่ปรับแก้บ่อย:** `TOGGLE_KEY`, `GRID_COLUMNS`, `CELL_SIZE`, `SLOT_LAYOUT`
 
 5. **`EnemyVisualsClient` (`LocalScript`)**
    * **ท่าเดินศัตรู:** แกว่งแขนขา (Motor6D `LeftHip`, `RightHip`, `LeftShoulder`, `RightShoulder` ที่ `EnemyService` สร้าง) ตามความเร็วที่ศัตรูเคลื่อนที่จริง หยุดเดิน = ค่อยๆ กลับท่ายืน ทำใน `RunService.PreSimulation` เหมือนท่าฟันของผู้เล่น
@@ -159,12 +159,13 @@
    * `Attack`: `Kind` (`Melee` ตีคนเดียว / `Slam` ทุบเป็นวง `Radius`), `Range`, `Windup` (เวลาเตือนก่อนโดน = เวลาให้หลบ), `Cooldown`, ดาเมจ
    * `Exp` (ทุกคนที่ตีโดนได้เต็มจำนวน), `RespawnTime`, `Drops` (`Rolls` ครั้ง × โอกาส `Chance`, `RarityWeights` = น้ำหนักความหายาก)
 
-4. **`Modules > ItemData`** — ไอเทม
-   * `Bases`: ของที่ดรอปได้ (`IronSword` ดาบเหล็ก → ช่องอาวุธ, `LeatherVest` เสื้อเกราะหนัง → ช่องเกราะ) พร้อม `Implicit` = สเตตัสติดตัวของทุกชิ้น
+4. **`Modules > ItemData`** — ไอเทมและช่องสวมใส่
+   * `Slots`: รองรับช่องสวมใส่ทั้งหมด 9 ช่อง (`Helmet`, `Amulet`, `MainHand`, `OffHand`, `Cloth`, `Ring1`, `Ring2`, `Special1`, `Special2`) โดยไอเทมประเภท `Ring` จะเลือกใส่ช่อง `Ring1`/`Ring2` ที่ว่างอัตโนมัติ และ `Special` จะเลือกใส่ `Special1`/`Special2` ที่ว่างอัตโนมัติ
+   * `Bases`: ของที่ดรอปได้ (`IronSword` ดาบเหล็ก → ช่อง `MainHand`, `LeatherVest` เสื้อเกราะหนัง → ช่อง `Cloth`) พร้อม `Implicit` = สเตตัสติดตัวของทุกชิ้น
    * `Affixes`: ออปชันสุ่ม `FlatDamage` (+ดาเมจ, Prefix), `MaxHealth` (+เลือด, Prefix), `AttackSpeed` (+% ความเร็วโจมตี, Suffix) แต่ละอันมีช่วงค่า `Min`–`Max`
    * `Rarities`: ธรรมดา (0 affix, ขาว), เวทมนตร์ (1-2, ฟ้า, Prefix ≤1 Suffix ≤1), หายาก (3, เหลือง)
    * ไอเทม 1 ชิ้นเป็นข้อมูลล้วน `{ Id, Base, Rarity, Affixes = { { Id, Value } } }` จึงเซฟลง DataStore และส่งผ่าน Remote ได้ตรงๆ
-   * **เพิ่มไอเทม/affix ใหม่:** เพิ่มแถวใน `Bases` / `Affixes` (ถ้าเป็นสเตตัสใหม่ต้องเพิ่มใน `StatText`, `PlayerStats` และโค้ดที่ใช้สเตตัสนั้นด้วย)
+   * **เพิ่มไอเทม/affix ใหม่:** เพิ่มแถวใน `Bases` (กำหนด `Slot` เป็น `"MainHand"`, `"OffHand"`, `"Cloth"`, `"Helmet"`, `"Amulet"`, `"Ring"`, หรือ `"Special"`) / `Affixes` (ถ้าเป็นสเตตัสใหม่ต้องเพิ่มใน `StatText`, `PlayerStats` และโค้ดที่ใช้สเตตัสนั้นด้วย)
 
 5. **`Modules > PlayerStats`** — สเตตัสผู้เล่น
    * `BASE_MAX_HEALTH` (100), `MAX_HEALTH_PER_LEVEL` (+12/เลเวล), `DAMAGE_PER_LEVEL` (+2/เลเวล), `MAX_LEVEL` (30)

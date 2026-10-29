@@ -47,23 +47,90 @@ ItemData.StatText = {
 	AttackSpeed = "+%d%% ความเร็วโจมตี",
 } :: { [string]: string }
 
--- Equipment slots in display order
-ItemData.Slots = { "Weapon", "Armor" }
+-- Equipment slots in display order (9 slots supported)
+ItemData.Slots = {
+	"Helmet",
+	"Amulet",
+	"MainHand",
+	"OffHand",
+	"Cloth",
+	"Ring1",
+	"Ring2",
+	"Special1",
+	"Special2",
+}
+
 ItemData.SlotNames = {
-	Weapon = "อาวุธ",
-	Armor = "ชุดเกราะ",
+	Helmet = "Helmet",
+	Amulet = "Amulet",
+	MainHand = "Main Hand",
+	OffHand = "Off Hand",
+	Cloth = "Cloth",
+	Ring1 = "Ring 1",
+	Ring2 = "Ring 2",
+	Special1 = "Special 1",
+	Special2 = "Special 2",
+	-- Item category aliases
+	Ring = "Ring",
+	Special = "Special",
+	Weapon = "Main Hand",
+	Armor = "Cloth",
 } :: { [string]: string }
+
+-- Check if an item's Base.Slot can be worn in a given equipment slot key
+function ItemData.isSlotCompatible(baseSlot: string, equipSlot: string): boolean
+	if baseSlot == equipSlot then
+		return true
+	end
+	if (baseSlot == "Weapon" or baseSlot == "MainHand") and equipSlot == "MainHand" then
+		return true
+	end
+	if (baseSlot == "Armor" or baseSlot == "Cloth") and equipSlot == "Cloth" then
+		return true
+	end
+	if baseSlot == "Ring" and (equipSlot == "Ring1" or equipSlot == "Ring2") then
+		return true
+	end
+	if baseSlot == "Special" and (equipSlot == "Special1" or equipSlot == "Special2") then
+		return true
+	end
+	return false
+end
+
+-- Pick which equipment slot key an item should go into when equipped
+function ItemData.getTargetSlot(baseSlot: string, equipped: { [string]: Item }): string
+	if baseSlot == "Weapon" or baseSlot == "MainHand" then
+		return "MainHand"
+	elseif baseSlot == "Armor" or baseSlot == "Cloth" then
+		return "Cloth"
+	elseif baseSlot == "Ring" then
+		if not equipped["Ring1"] then
+			return "Ring1"
+		elseif not equipped["Ring2"] then
+			return "Ring2"
+		end
+		return "Ring1"
+	elseif baseSlot == "Special" then
+		if not equipped["Special1"] then
+			return "Special1"
+		elseif not equipped["Special2"] then
+			return "Special2"
+		end
+		return "Special1"
+	end
+	return baseSlot
+end
 
 -- Item bases that can drop
 ItemData.Bases = {
 	IronSword = {
 		Name = "ดาบเหล็ก",
-		Slot = "Weapon",
+		Slot = "MainHand",
 		Implicit = { FlatDamage = 5 },
 	},
 	LeatherVest = {
 		Name = "เสื้อเกราะหนัง",
-		Slot = "Armor",
+		Slot = "Cloth",
 		Implicit = { MaxHealth = 30 },
 	},
 } :: { [string]: BaseInfo }
