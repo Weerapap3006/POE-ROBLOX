@@ -152,7 +152,7 @@ function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
 
 	-- Pick up with E (PC) or by tapping the prompt (mobile)
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "เก็บ"
+	prompt.ActionText = "Pick Up"
 	prompt.ObjectText = itemName
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = PICKUP_DISTANCE

@@ -261,7 +261,7 @@ local function equip(player: Player, profile: Profile, itemId: string)
 
 	-- 1. Trying to equip an OffHand item while MainHand forbids OffHand
 	if slot == "OffHand" and not ItemData.allowsOffHand(profile.Equipped.MainHand) then
-		PlayerData.notify(player, "อาวุธหลักที่ถืออยู่ ห้ามใส่ออฟแฮนด์!", WARNING_COLOR)
+		PlayerData.notify(player, "Current Main Hand weapon forbids Off-Hand!", WARNING_COLOR)
 		return
 	end
 
@@ -269,7 +269,7 @@ local function equip(player: Player, profile: Profile, itemId: string)
 	if slot == "MainHand" and not ItemData.allowsOffHand(item) and profile.Equipped.OffHand then
 		-- If MainHand is also occupied, both old MainHand and old OffHand return to inventory (+1 net item in bag)
 		if profile.Equipped.MainHand and #profile.Inventory >= INVENTORY_CAPACITY then
-			PlayerData.notify(player, "กระเป๋าเต็ม! ถอด Off Hand อัตโนมัติไม่ได้", WARNING_COLOR)
+			PlayerData.notify(player, "Inventory full! Cannot auto-unequip Off-Hand", WARNING_COLOR)
 			return
 		end
 	end
@@ -287,7 +287,7 @@ local function equip(player: Player, profile: Profile, itemId: string)
 	if slot == "MainHand" and not ItemData.allowsOffHand(item) and profile.Equipped.OffHand then
 		table.insert(profile.Inventory, profile.Equipped.OffHand)
 		profile.Equipped.OffHand = nil
-		PlayerData.notify(player, "ถอด Off Hand เก็บเข้ากระเป๋าอัตโนมัติ", INFO_COLOR)
+		PlayerData.notify(player, "Off-Hand unequipped to Inventory", INFO_COLOR)
 	end
 end
 
@@ -297,7 +297,7 @@ local function unequip(player: Player, profile: Profile, slot: string)
 		return
 	end
 	if #profile.Inventory >= INVENTORY_CAPACITY then
-		PlayerData.notify(player, "กระเป๋าเต็ม!", WARNING_COLOR)
+		PlayerData.notify(player, "Inventory is full!", WARNING_COLOR)
 		return
 	end
 	profile.Equipped[slot] = nil
@@ -368,7 +368,7 @@ function PlayerData.addExp(player: Player, amount: number)
 	-- Leveling up also heals to full
 	refreshStats(player, profile, leveledUp)
 	if leveledUp then
-		PlayerData.notify(player, ("เลเวลอัป! Lv %d"):format(profile.Level), LEVEL_UP_COLOR)
+		PlayerData.notify(player, ("Level Up! Lv %d"):format(profile.Level), LEVEL_UP_COLOR)
 	end
 end
 
@@ -379,14 +379,14 @@ function PlayerData.addItem(player: Player, item: ItemData.Item): boolean
 		return false
 	end
 	if #profile.Inventory >= INVENTORY_CAPACITY then
-		PlayerData.notify(player, "กระเป๋าเต็ม! สวมใส่หรือทิ้งของก่อน", WARNING_COLOR)
+		PlayerData.notify(player, "Inventory is full! Equip or discard items first", WARNING_COLOR)
 		return false
 	end
 
 	table.insert(profile.Inventory, item)
 	sync(player, profile)
 	local rarity = ItemData.Rarities[item.Rarity]
-	PlayerData.notify(player, "ได้รับ " .. ItemData.getName(item), rarity and rarity.Color)
+	PlayerData.notify(player, "Obtained " .. ItemData.getName(item), rarity and rarity.Color)
 	return true
 end
 
@@ -418,9 +418,9 @@ local function onPlayerAdded(player: Player)
 	sync(player, profile)
 
 	if status == "NoAccess" then
-		PlayerData.notify(player, "เทสใน Studio: เล่นได้ปกติ แต่ไม่บันทึกความคืบหน้า", INFO_COLOR)
+		PlayerData.notify(player, "Studio Test: Playable, but progress will not be saved", INFO_COLOR)
 	elseif status == "Failed" then
-		PlayerData.notify(player, "โหลดข้อมูลไม่สำเร็จ รอบนี้จะไม่บันทึกความคืบหน้า", WARNING_COLOR)
+		PlayerData.notify(player, "Failed to load data. Progress will not be saved this session", WARNING_COLOR)
 	end
 end
 

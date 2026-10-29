@@ -25,8 +25,8 @@ local Ui = require(modulesFolder:WaitForChild("Ui"))
 -- ==========================================
 -- Skill bar order on screen. Inputs = mouse buttons / keys for the skill (mobile taps the button instead)
 local SKILL_BAR: { { SkillId: string, KeyText: string, Inputs: { EnumItem } } } = {
-	{ SkillId = "BasicSlash", KeyText = "คลิกซ้าย", Inputs = { Enum.UserInputType.MouseButton1 } },
-	{ SkillId = "SpinSlash", KeyText = "คลิกขวา / Q", Inputs = { Enum.UserInputType.MouseButton2, Enum.KeyCode.Q } },
+	{ SkillId = "BasicSlash", KeyText = "LMB", Inputs = { Enum.UserInputType.MouseButton1 } },
+	{ SkillId = "SpinSlash", KeyText = "RMB / Q", Inputs = { Enum.UserInputType.MouseButton2, Enum.KeyCode.Q } },
 }
 local TOUCH_AUTO_AIM_RANGE = 25 -- Mobile: skills aim at the nearest enemy within this many studs
 local SLASH_COLOR = Color3.fromRGB(120, 210, 255) -- Anime cyan energy slash

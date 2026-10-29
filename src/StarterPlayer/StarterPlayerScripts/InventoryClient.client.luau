@@ -76,7 +76,7 @@ local toggleButton = Ui.button({
 	Size = UDim2.fromOffset(130, 40),
 	BackgroundColor3 = Ui.Colors.Panel,
 	BackgroundTransparency = 0.15,
-	Text = if isTouchOnly then "กระเป๋า" else "กระเป๋า [B]",
+	Text = if isTouchOnly then "Inventory" else "Inventory [B]",
 	Parent = gui,
 }, { Ui.corner(8), Ui.stroke(Ui.Colors.Accent, 2) })
 
@@ -104,7 +104,7 @@ workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateS
 Ui.text({
 	Position = UDim2.fromOffset(16, 8),
 	Size = UDim2.new(1, -80, 0, 32),
-	Text = "กระเป๋า & อุปกรณ์สวมใส่ [B]",
+	Text = "Inventory & Equipment [B]",
 	TextSize = 20,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = window,
@@ -344,7 +344,7 @@ end
 local function renderDetails()
 	local item, equippedSlot = findItem(selectedId)
 	if not item then
-		detailName.Text = "เลือกไอเทมเพื่อดูรายละเอียด"
+		detailName.Text = "Select an item to view details"
 		detailName.TextColor3 = Ui.Colors.TextDim
 		detailInfo.Text = ""
 		detailLines.Text = ""
@@ -359,7 +359,7 @@ local function renderDetails()
 	detailName.TextColor3 = getRarityColor(item)
 	local slotLabel = if base then ItemData.SlotNames[base.Slot] or base.Slot else "?"
 	if base and (base.Slot == "MainHand" or base.Slot == "Weapon") then
-		slotLabel ..= if base.AllowOffHand == false then " (ล็อก Off Hand)" else " (ใส่ Off Hand ได้)"
+		slotLabel ..= if base.AllowOffHand == false then " (No Off-Hand)" else " (Allows Off-Hand)"
 	end
 	detailInfo.Text = string.format(
 		"%s · %s",
@@ -384,18 +384,18 @@ local function renderDetails()
 		and base.Slot == "OffHand"
 		and not ItemData.allowsOffHand(equipped.MainHand)
 	if equippedSlot then
-		actionButton.Text = "ถอด"
+		actionButton.Text = "Unequip"
 		actionButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
 	elseif isBlockedOffHand then
-		actionButton.Text = "อาวุธหลักล็อก Off Hand"
+		actionButton.Text = "Off-Hand Locked"
 		actionButton.BackgroundColor3 = Color3.fromRGB(85, 65, 65)
 	else
-		actionButton.Text = "สวมใส่"
+		actionButton.Text = "Equip"
 		actionButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
 	end
 	-- Equipped items must be taken off before they can be thrown away
 	discardButton.Visible = equippedSlot == nil
-	discardButton.Text = if confirmingDiscard then "กดอีกครั้งเพื่อยืนยัน" else "ทิ้ง"
+	discardButton.Text = if confirmingDiscard then "Click Again to Confirm" else "Discard"
 end
 
 function render()

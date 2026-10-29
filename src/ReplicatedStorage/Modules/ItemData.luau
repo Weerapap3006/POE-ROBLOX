@@ -43,9 +43,9 @@ local ItemData = {}
 
 -- How each stat is written in tooltips (%d = value)
 ItemData.StatText = {
-	FlatDamage = "+%d ดาเมจ",
-	MaxHealth = "+%d เลือดสูงสุด",
-	AttackSpeed = "+%d%% ความเร็วโจมตี",
+	FlatDamage = "+%d Damage",
+	MaxHealth = "+%d Max Health",
+	AttackSpeed = "+%d%% Attack Speed",
 } :: { [string]: string }
 
 -- Equipment slots in display order (9 slots supported)
@@ -137,13 +137,13 @@ end
 -- Item bases that can drop
 ItemData.Bases = {
 	IronSword = {
-		Name = "ดาบเหล็ก",
+		Name = "Iron Sword",
 		Slot = "MainHand",
-		AllowOffHand = false, -- ถือมือเดียว ห้ามถือ OffHand หรือถือคู่ (เปลี่ยนเป็น true สำหรับอาวุธที่มี OffHand)
+		AllowOffHand = false, -- Solo MainHand weapon: locks OffHand slot (set true for weapons that allow OffHand)
 		Implicit = { FlatDamage = 5 },
 	},
 	LeatherVest = {
-		Name = "เสื้อเกราะหนัง",
+		Name = "Leather Vest",
 		Slot = "Cloth",
 		Implicit = { MaxHealth = 30 },
 	},
@@ -159,7 +159,7 @@ ItemData.Affixes = {
 -- How many affixes each rarity rolls, and how many of them may be prefixes / suffixes
 ItemData.Rarities = {
 	Normal = {
-		Name = "ธรรมดา",
+		Name = "Normal",
 		Color = Color3.fromRGB(225, 225, 225),
 		MinAffixes = 0,
 		MaxAffixes = 0,
@@ -167,7 +167,7 @@ ItemData.Rarities = {
 		MaxSuffixes = 0,
 	},
 	Magic = {
-		Name = "เวทมนตร์",
+		Name = "Magic",
 		Color = Color3.fromRGB(110, 150, 255),
 		MinAffixes = 1,
 		MaxAffixes = 2,
@@ -175,7 +175,7 @@ ItemData.Rarities = {
 		MaxSuffixes = 1,
 	},
 	Rare = {
-		Name = "หายาก",
+		Name = "Rare",
 		Color = Color3.fromRGB(255, 215, 70),
 		MinAffixes = 3,
 		MaxAffixes = 3,

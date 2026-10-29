@@ -120,7 +120,7 @@ Ui.text({
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.42),
 	Size = UDim2.new(1, 0, 0, 60),
-	Text = "คุณตายแล้ว",
+	Text = "YOU DIED",
 	TextSize = 44,
 	TextColor3 = Ui.Colors.Health,
 	ZIndex = 11,
@@ -144,7 +144,7 @@ local function showDeathScreen()
 	deathScreen.Visible = true
 	task.spawn(function()
 		while deathScreen.Visible and thisDeath == deathCount do
-			respawnText.Text = string.format("เกิดใหม่ใน %d วินาที", math.max(0, math.ceil(respawnAt - os.clock())))
+			respawnText.Text = string.format("Respawning in %ds", math.max(0, math.ceil(respawnAt - os.clock())))
 			task.wait(0.2)
 		end
 	end)

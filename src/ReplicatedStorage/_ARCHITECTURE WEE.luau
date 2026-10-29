@@ -44,6 +44,12 @@
 --------------------------------------------------------------------------------
 3. บันทึกการแก้ไข (CHANGELOG ของ WEE) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - All UI & Data Modules (Base English UI + Remove Emoji Icons):
+     + เปลี่ยนข้อความ UI และชื่อข้อมูลในเกมทั้งหมดเป็นภาษาอังกฤษ (Base English) และเอาไอคอนอีโมจิออก:
+       - SkillData & CombatClient: Slash [LMB], Spin Slash [RMB / Q]
+       - ItemData & InventoryClient: Inventory [B], Iron Sword, Leather Vest, Normal/Magic/Rare, Equip/Unequip/Discard
+       - EnemyData & EnemyService: Stone Grunt, Stone Guardian, Dungeon Portal (Reset Monsters), Return to Lobby
+       - HudClient & PlayerData & Loot: YOU DIED, Respawning in Xs, Pick Up, Level Up!, Obtained <Item>
    - ItemData / PlayerData / InventoryClient:
      + ขยายระบบช่องสวมใส่อุปกรณ์ (Equipment Slots) ให้รองรับครบ 9 ช่องตามแผน:
        MainHand, OffHand, Cloth, Helmet, Amulet, Ring1, Ring2, Special1, Special2

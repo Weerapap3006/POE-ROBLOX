@@ -75,7 +75,7 @@ local mapFrame = Ui.new("Frame", {
 local mapStroke = Ui.stroke(Ui.Colors.Stroke, 2)
 mapStroke.Parent = mapFrame
 
--- Settings Button (⚙️) next to the Minimap at top-right
+-- Settings Button next to the Minimap at top-right (no emoji icon)
 local settingButton = Ui.button({
 	Name = "SettingButton",
 	AnchorPoint = Vector2.new(1, 0),
@@ -83,8 +83,8 @@ local settingButton = Ui.button({
 	Size = UDim2.fromOffset(38, 38),
 	BackgroundColor3 = Ui.Colors.Panel,
 	BackgroundTransparency = 0.15,
-	Text = "⚙️",
-	TextSize = 20,
+	Text = "SET",
+	TextSize = 13,
 	Parent = gui,
 }, { Ui.corner(8), Ui.stroke(Ui.Colors.Accent, 2) })
 
@@ -335,7 +335,7 @@ local openMapSettingsBtn = Ui.button({
 	Position = UDim2.fromOffset(0, 28),
 	Size = UDim2.new(1, 0, 0, 48),
 	BackgroundColor3 = Ui.Colors.PanelLight,
-	Text = "🗺️  Map Settings  >",
+	Text = "Map Settings  >",
 	TextSize = 16,
 	ZIndex = 32,
 	Parent = mainMenuPage,
@@ -349,7 +349,7 @@ local openOtherSettingsBtn = Ui.button({
 	Position = UDim2.fromOffset(0, 86),
 	Size = UDim2.new(1, 0, 0, 48),
 	BackgroundColor3 = Ui.Colors.PanelLight,
-	Text = "🔧  Other Settings  >",
+	Text = "Other Settings  >",
 	TextSize = 16,
 	ZIndex = 32,
 	Parent = mainMenuPage,
@@ -385,7 +385,7 @@ local warpLobbyBtn = Ui.button({
 	Position = UDim2.fromOffset(0, 188),
 	Size = UDim2.new(1, 0, 0, 48),
 	BackgroundColor3 = Color3.fromRGB(50, 140, 95),
-	Text = "🏠  Return to Lobby",
+	Text = "Return to Lobby",
 	TextSize = 16,
 	ZIndex = 32,
 	Parent = mainMenuPage,

@@ -19,7 +19,7 @@ export type Skill = {
 
 local SkillData: { [string]: Skill } = {
 	BasicSlash = {
-		Name = "ฟัน",
+		Name = "Slash",
 		Cooldown = 0.55, -- Seconds between attacks
 		MinDamage = 26,
 		MaxDamage = 50,
@@ -30,7 +30,7 @@ local SkillData: { [string]: Skill } = {
 		HitboxForwardOffset = 5.0,
 	},
 	SpinSlash = {
-		Name = "หมุนฟัน",
+		Name = "Spin Slash",
 		Cooldown = 3.0,
 		MinDamage = 40,
 		MaxDamage = 70,

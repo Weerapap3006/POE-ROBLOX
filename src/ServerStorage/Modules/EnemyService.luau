@@ -335,7 +335,7 @@ function onDeath(state: EnemyState, _point: SpawnPoint)
 	Loot.rollDrops(data.Drops, findGround(state.Root.Position))
 
 	if data.IsBoss then
-		PlayerData.notify(nil, ("เคลียร์ด่าน! ปราบ %s สำเร็จ (เข้าวาร์ปเพื่อกลับ Lobby)"):format(data.DisplayName), BOSS_CLEAR_COLOR)
+		PlayerData.notify(nil, ("Dungeon Cleared! Defeated %s (Use portal to return to Lobby)"):format(data.DisplayName), BOSS_CLEAR_COLOR)
 	end
 
 	-- Fade the body out, then remove it (no auto-respawn; enemies respawn only when resetting the dungeon)
@@ -593,8 +593,16 @@ local function setupDungeonPortals()
 	local lobbySpawn = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
 
 	local enterPortal = dungeonMap:FindFirstChild("LobbyDungeonPortal")
+	if enterPortal then
+		local label = enterPortal:FindFirstChildWhichIsA("TextLabel", true)
+		if label then
+			label.Text = "Dungeon Portal\n(Reset Monsters)"
+		end
+	end
 	local enterPrompt = enterPortal and enterPortal:FindFirstChild("PortalPrompt", true) :: ProximityPrompt?
 	if enterPrompt then
+		enterPrompt.ObjectText = "Stage 1: Stone Valley"
+		enterPrompt.ActionText = "Enter Dungeon"
 		enterPrompt.Triggered:Connect(function(player: Player)
 			local character = player.Character
 			local root = getAliveRoot(character)
@@ -610,13 +618,21 @@ local function setupDungeonPortals()
 			if humanoid then
 				humanoid.Health = humanoid.MaxHealth
 			end
-			PlayerData.notify(player, "เข้าสู่ด่าน! มอนสเตอร์ทั้งหมดถูกรีเซ็ตใหม่", Color3.fromRGB(110, 215, 255))
+			PlayerData.notify(player, "Entered Dungeon! All monsters have been reset", Color3.fromRGB(110, 215, 255))
 		end)
 	end
 
 	local returnPortal = dungeonMap:FindFirstChild("DungeonReturnPortal")
+	if returnPortal then
+		local label = returnPortal:FindFirstChildWhichIsA("TextLabel", true)
+		if label then
+			label.Text = "Return to Lobby"
+		end
+	end
 	local returnPrompt = returnPortal and returnPortal:FindFirstChild("PortalPrompt", true) :: ProximityPrompt?
 	if returnPrompt then
+		returnPrompt.ObjectText = "Safe Zone"
+		returnPrompt.ActionText = "Return to Lobby"
 		returnPrompt.Triggered:Connect(function(player: Player)
 			local character = player.Character
 			local root = getAliveRoot(character)
@@ -631,7 +647,7 @@ local function setupDungeonPortals()
 			if humanoid then
 				humanoid.Health = humanoid.MaxHealth
 			end
-			PlayerData.notify(player, "กลับมาที่โซนปลอดภัย (Lobby)", Color3.fromRGB(140, 240, 160))
+			PlayerData.notify(player, "Returned to Safe Zone (Lobby)", Color3.fromRGB(140, 240, 160))
 		end)
 	end
 
@@ -652,7 +668,7 @@ local function setupDungeonPortals()
 			if humanoid then
 				humanoid.Health = humanoid.MaxHealth
 			end
-			PlayerData.notify(player, "วาร์ปกลับสู่โซนปลอดภัย (Lobby)", Color3.fromRGB(140, 240, 160))
+			PlayerData.notify(player, "Returned to Safe Zone (Lobby)", Color3.fromRGB(140, 240, 160))
 		end
 	end)
 end

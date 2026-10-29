@@ -33,7 +33,7 @@ export type EnemyType = {
 
 local EnemyData: { [string]: EnemyType } = {
 	Grunt = {
-		DisplayName = "ภูตหิน",
+		DisplayName = "Stone Grunt",
 		IsBoss = false,
 		MaxHealth = 120,
 		WalkSpeed = 13, -- Slower than the player (18) so you can kite
@@ -59,7 +59,7 @@ local EnemyData: { [string]: EnemyType } = {
 		},
 	},
 	Brute = {
-		DisplayName = "ยักษ์หินผู้พิทักษ์",
+		DisplayName = "Stone Guardian",
 		IsBoss = true,
 		MaxHealth = 1500,
 		WalkSpeed = 10,
