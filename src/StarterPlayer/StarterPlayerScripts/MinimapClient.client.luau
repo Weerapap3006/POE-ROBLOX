@@ -1,5 +1,5 @@
 -- ==========================================
--- MINIMAP CLIENT (Corner Radar + M Overlay Map with Enemies, Boss, Portals & Walls)
+-- MINIMAP CLIENT (Corner Radar + M Overlay Map with Enemies, Boss, Portals & Walls + Settings)
 -- Path: StarterPlayer.StarterPlayerScripts.MinimapClient
 -- ==========================================
 local Players = game:GetService("Players")
@@ -10,43 +10,47 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
+local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+local teleportRemote = remotesFolder:WaitForChild("TeleportRemote") :: RemoteEvent
+
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local Ui = require(modulesFolder:WaitForChild("Ui"))
 
 -- ==========================================
--- CONFIGURATION (ปรับค่าขนาด, ระยะ, สี, ความโปร่งใส ได้ที่นี่)
+-- CONFIGURATION & SETTINGS STATE
 -- ==========================================
 local TOGGLE_OVERLAY_KEY = Enum.KeyCode.M -- ปุ่มสลับขยายแผนที่กลางจอแบบ PoE
+local TOGGLE_SETTING_KEY = Enum.KeyCode.P -- ปุ่มเปิด/ปิดหน้าต่าง Settings
 
 -- 1. โหมดมุมขวาบน (Corner Radar Mode)
-local CORNER_MAP_SIZE = 185 -- ขนาดกรอบมินิแมพมุมขวาบน (พิกเซล)
-local CORNER_VIEW_RADIUS = 130 -- ระยะมองเห็นในมินิแมพมุมขวาบน (studs รอบตัวเรา)
-local CORNER_BG_TRANSPARENCY = 0.2 -- ความโปร่งใสพื้นหลังตอนอยู่มุมขวาบน (0 = ทึบ, 1 = ใส)
+local cornerMapSize = 185 -- ขนาดกรอบมินิแมพมุมขวาบน
+local cornerViewRadius = 130 -- ระยะมองเห็นในมินิแมพมุมขวาบน
+local cornerBgTransparency = 0.2 -- ความโปร่งใสพื้นหลังตอนอยู่มุมขวาบน
 
 -- 2. โหมดกด M ขยายกลางจอ (Overlay Mode แบบ PoE)
-local OVERLAY_MAP_SIZE = 460 -- ขนาดแผนที่ตอนกด M มาอยู่กลางจอ (พิกเซล)
-local OVERLAY_VIEW_RADIUS = 240 -- ระยะมองเห็นตอนกด M กลางจอ (studs รอบตัวเรา เห็นกว้างขึ้น)
-local OVERLAY_BG_TRANSPARENCY = 0.45 -- ความโปร่งใสพื้นหลังตอนกด M กลางจอ
-local OVERLAY_STROKE_TRANSPARENCY = 0.3 -- ความโปร่งใสเส้นขอบตอนกด M กลางจอ
+local overlayMapSize = 460 -- ขนาดแผนที่ตอนกด M มาอยู่กลางจอ
+local overlayViewRadius = 240 -- ระยะมองเห็นตอนกด M กลางจอ
+local overlayBgTransparency = 0.45 -- ความโปร่งใสพื้นหลังตอนกด M กลางจอ
+local overlayStrokeTransparency = 0.3
 
 -- 3. สีและขนาดของจุดสัญลักษณ์ต่างๆ ในแผนที่
-local SELF_COLOR = Color3.fromRGB(255, 255, 255) -- สีจุดตัวเรา (สีขาวตามที่ตั้งไว้)
+local SELF_COLOR = Color3.fromRGB(255, 255, 255) -- สีจุดตัวเรา (สีขาว)
 local SELF_DOT_SIZE = 9
 
-local ALLY_COLOR = Color3.fromRGB(90, 200, 255) -- สีจุดผู้เล่นคนอื่น
+local ALLY_COLOR = Color3.fromRGB(90, 200, 255)
 local ALLY_DOT_SIZE = 8
 
-local ENEMY_COLOR = Color3.fromRGB(255, 65, 65) -- สีจุดมอนสเตอร์ทั่วไป (สีแดง)
+local ENEMY_COLOR = Color3.fromRGB(255, 65, 65)
 local ENEMY_DOT_SIZE = 7
 
-local BOSS_COLOR = Color3.fromRGB(255, 165, 40) -- สีจุดบอส (สีส้มทองใหญ่)
+local BOSS_COLOR = Color3.fromRGB(255, 165, 40)
 local BOSS_DOT_SIZE = 13
 
-local ENTER_PORTAL_COLOR = Color3.fromRGB(80, 210, 255) -- สีประตูเข้าด่าน
-local RETURN_PORTAL_COLOR = Color3.fromRGB(255, 215, 70) -- สีประตูกลับ Lobby
+local ENTER_PORTAL_COLOR = Color3.fromRGB(80, 210, 255)
+local RETURN_PORTAL_COLOR = Color3.fromRGB(255, 215, 70)
 local PORTAL_DOT_SIZE = 11
 
-local WALL_COLOR = Color3.fromRGB(130, 140, 165) -- สีแท่งกำแพงด่าน
+local WALL_COLOR = Color3.fromRGB(130, 140, 165)
 local WALL_TRANSPARENCY = 0.35
 
 -- ==========================================
@@ -56,19 +60,33 @@ local isOverlayMode = false
 local isTouchOnly = Ui.isTouchOnly()
 local gui = Ui.screenGui("Minimap", 2)
 
+-- Container สำหรับจัดวางมินิแมพมุมขวาบน
 local mapFrame = Ui.new("Frame", {
 	Name = "MapContainer",
 	AnchorPoint = Vector2.new(1, 0),
-	Position = if isTouchOnly then UDim2.new(1, -12, 0, 56) else UDim2.new(1, -16, 0, 16),
-	Size = UDim2.fromOffset(CORNER_MAP_SIZE, CORNER_MAP_SIZE),
+	Position = if isTouchOnly then UDim2.new(1, -54, 0, 56) else UDim2.new(1, -58, 0, 16),
+	Size = UDim2.fromOffset(cornerMapSize, cornerMapSize),
 	BackgroundColor3 = Ui.Colors.Panel,
-	BackgroundTransparency = CORNER_BG_TRANSPARENCY,
+	BackgroundTransparency = cornerBgTransparency,
 	ClipsDescendants = true,
 	Parent = gui,
 }, { Ui.corner(10) })
 
 local mapStroke = Ui.stroke(Ui.Colors.Stroke, 2)
 mapStroke.Parent = mapFrame
+
+-- ปุ่ม Setting ⚙️ วางอยู่ข้างๆ มินิแมพ (มุมขวาบน)
+local settingButton = Ui.button({
+	Name = "SettingButton",
+	AnchorPoint = Vector2.new(1, 0),
+	Position = if isTouchOnly then UDim2.new(1, -8, 0, 56) else UDim2.new(1, -12, 0, 16),
+	Size = UDim2.fromOffset(38, 38),
+	BackgroundColor3 = Ui.Colors.Panel,
+	BackgroundTransparency = 0.15,
+	Text = "⚙️",
+	TextSize = 20,
+	Parent = gui,
+}, { Ui.corner(8), Ui.stroke(Ui.Colors.Accent, 2) })
 
 -- Subtle crosshair lines in center
 local hLine = Ui.new("Frame", {
@@ -155,15 +173,15 @@ local function applyMapMode()
 	if isOverlayMode then
 		mapFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 		mapFrame.Position = UDim2.fromScale(0.5, 0.5)
-		mapFrame.Size = UDim2.fromOffset(OVERLAY_MAP_SIZE, OVERLAY_MAP_SIZE)
-		mapFrame.BackgroundTransparency = OVERLAY_BG_TRANSPARENCY
-		mapStroke.Transparency = OVERLAY_STROKE_TRANSPARENCY
+		mapFrame.Size = UDim2.fromOffset(overlayMapSize, overlayMapSize)
+		mapFrame.BackgroundTransparency = overlayBgTransparency
+		mapStroke.Transparency = overlayStrokeTransparency
 		titleLabel.Text = "แผนที่กลางจอ (กด M เพื่อย่อ)"
 	else
 		mapFrame.AnchorPoint = Vector2.new(1, 0)
-		mapFrame.Position = if isTouchOnly then UDim2.new(1, -12, 0, 56) else UDim2.new(1, -16, 0, 16)
-		mapFrame.Size = UDim2.fromOffset(CORNER_MAP_SIZE, CORNER_MAP_SIZE)
-		mapFrame.BackgroundTransparency = CORNER_BG_TRANSPARENCY
+		mapFrame.Position = if isTouchOnly then UDim2.new(1, -54, 0, 56) else UDim2.new(1, -58, 0, 16)
+		mapFrame.Size = UDim2.fromOffset(cornerMapSize, cornerMapSize)
+		mapFrame.BackgroundTransparency = cornerBgTransparency
 		mapStroke.Transparency = 0
 		titleLabel.Text = if isTouchOnly then "แตะเพื่อขยาย" else "แผนที่ [M]"
 	end
@@ -176,12 +194,227 @@ end
 
 clickToggle.Activated:Connect(toggleOverlayMode)
 
+-- ==========================================
+-- SETTINGS WINDOW
+-- ==========================================
+local settingsWindow = Ui.new("Frame", {
+	Name = "SettingsWindow",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromOffset(340, 360),
+	BackgroundColor3 = Ui.Colors.Panel,
+	BackgroundTransparency = 0.05,
+	Visible = false,
+	Active = true,
+	ZIndex = 30,
+	Parent = gui,
+}, { Ui.corner(12), Ui.stroke(Ui.Colors.Accent, 2) })
+
+Ui.text({
+	Position = UDim2.fromOffset(16, 12),
+	Size = UDim2.new(1, -70, 0, 30),
+	Text = "⚙️ การตั้งค่าเกม & แผนที่",
+	TextSize = 20,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 31,
+	Parent = settingsWindow,
+})
+
+local closeSettingsBtn = Ui.button({
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -12, 0, 12),
+	Size = UDim2.fromOffset(32, 32),
+	Text = "X",
+	TextSize = 16,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+-- 1. ปุ่มลัดวาร์ปกลับ Lobby
+local warpLobbyBtn = Ui.button({
+	Position = UDim2.fromOffset(16, 56),
+	Size = UDim2.new(1, -32, 0, 44),
+	BackgroundColor3 = Color3.fromRGB(50, 140, 95),
+	Text = "🏠 วาร์ปกลับ Lobby ทันที",
+	TextSize = 16,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(8), Ui.stroke(Color3.fromRGB(90, 220, 150), 1.5) })
+
+warpLobbyBtn.Activated:Connect(function()
+	teleportRemote:FireServer("Lobby")
+	settingsWindow.Visible = false
+end)
+
+-- 2. สลับโหมดแผนที่
+local toggleMapBtn = Ui.button({
+	Position = UDim2.fromOffset(16, 110),
+	Size = UDim2.new(1, -32, 0, 38),
+	BackgroundColor3 = Ui.Colors.PanelLight,
+	Text = "🗺️ สลับโหมดแผนที่ (มุมจอ / กลางจอ [M])",
+	TextSize = 14,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(8) })
+
+toggleMapBtn.Activated:Connect(function()
+	toggleOverlayMode()
+end)
+
+-- 3. ปรับขนาดแผนที่มุมจอ
+local sizeLabel = Ui.text({
+	Position = UDim2.fromOffset(16, 158),
+	Size = UDim2.new(1, -32, 0, 20),
+	Text = ("ขนาดมินิแมพ: %d px"):format(cornerMapSize),
+	TextSize = 14,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 31,
+	Parent = settingsWindow,
+})
+
+local btnSmall = Ui.button({
+	Position = UDim2.fromOffset(16, 184),
+	Size = UDim2.new(0.31, 0, 0, 32),
+	Text = "เล็ก (150)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+local btnMed = Ui.button({
+	Position = UDim2.new(0.35, 0, 0, 184),
+	Size = UDim2.new(0.31, 0, 0, 32),
+	Text = "กลาง (185)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+local btnBig = Ui.button({
+	Position = UDim2.new(0.69, 0, 0, 184),
+	Size = UDim2.new(0.31, 0, 0, 32),
+	Text = "ใหญ่ (230)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+local function setCornerSize(sz: number)
+	cornerMapSize = sz
+	sizeLabel.Text = ("ขนาดมินิแมพ: %d px"):format(cornerMapSize)
+	applyMapMode()
+end
+btnSmall.Activated:Connect(function() setCornerSize(150) end)
+btnMed.Activated:Connect(function() setCornerSize(185) end)
+btnBig.Activated:Connect(function() setCornerSize(230) end)
+
+-- 4. ปรับระยะซูมแผนที่
+local zoomLabel = Ui.text({
+	Position = UDim2.fromOffset(16, 226),
+	Size = UDim2.new(1, -32, 0, 20),
+	Text = ("ระยะเรดาร์: %d studs"):format(cornerViewRadius),
+	TextSize = 14,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 31,
+	Parent = settingsWindow,
+})
+
+local btnZoomNear = Ui.button({
+	Position = UDim2.fromOffset(16, 252),
+	Size = UDim2.new(0.31, 0, 0, 32),
+	Text = "ใกล้ (90)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+local btnZoomMed = Ui.button({
+	Position = UDim2.new(0.35, 0, 0, 252),
+	Size = UDim2.new(0.31, 0, 0, 32),
+	Text = "ปกติ (130)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+local btnZoomFar = Ui.button({
+	Position = UDim2.new(0.69, 0, 0, 252),
+	Size = UDim2.new(0.31, 0, 0, 32),
+	Text = "ไกล (200)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+local function setZoomRadius(rad: number)
+	cornerViewRadius = rad
+	zoomLabel.Text = ("ระยะเรดาร์: %d studs"):format(cornerViewRadius)
+end
+btnZoomNear.Activated:Connect(function() setZoomRadius(90) end)
+btnZoomMed.Activated:Connect(function() setZoomRadius(130) end)
+btnZoomFar.Activated:Connect(function() setZoomRadius(200) end)
+
+-- 5. สลับความโปร่งใส
+local transLabel = Ui.text({
+	Position = UDim2.fromOffset(16, 294),
+	Size = UDim2.new(1, -32, 0, 20),
+	Text = "ความโปร่งใสพื้นหลัง:",
+	TextSize = 14,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 31,
+	Parent = settingsWindow,
+})
+
+local btnTransSolid = Ui.button({
+	Position = UDim2.fromOffset(16, 316),
+	Size = UDim2.new(0.48, 0, 0, 32),
+	Text = "ทึบ (ชัดเจน)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+local btnTransGlass = Ui.button({
+	Position = UDim2.new(0.52, 0, 0, 316),
+	Size = UDim2.new(0.48, 0, 0, 32),
+	Text = "โปร่งใส (มองทะลุ)",
+	TextSize = 13,
+	ZIndex = 31,
+	Parent = settingsWindow,
+}, { Ui.corner(6) })
+
+btnTransSolid.Activated:Connect(function()
+	cornerBgTransparency = 0.05
+	overlayBgTransparency = 0.2
+	applyMapMode()
+end)
+
+btnTransGlass.Activated:Connect(function()
+	cornerBgTransparency = 0.5
+	overlayBgTransparency = 0.65
+	applyMapMode()
+end)
+
+local function toggleSettings()
+	settingsWindow.Visible = not settingsWindow.Visible
+end
+
+settingButton.Activated:Connect(toggleSettings)
+closeSettingsBtn.Activated:Connect(function()
+	settingsWindow.Visible = false
+end)
+
 UserInputService.InputBegan:Connect(function(input: InputObject)
 	if UserInputService:GetFocusedTextBox() then
 		return
 	end
 	if input.KeyCode == TOGGLE_OVERLAY_KEY then
 		toggleOverlayMode()
+	elseif input.KeyCode == TOGGLE_SETTING_KEY then
+		toggleSettings()
 	end
 end)
 
@@ -220,7 +453,6 @@ local function hideUnusedDots(pool: { Frame }, usedCount: number)
 	end
 end
 
--- Project a 3D world offset into 2D minimap coordinates aligned with the camera's horizontal angle
 local function worldToMinimap(worldPos: Vector3, originPos: Vector3, rightVec: Vector3, forwardVec: Vector3, viewRadius: number): (number, number, boolean)
 	local delta = worldPos - originPos
 	local localX = delta.X * rightVec.X + delta.Z * rightVec.Z
@@ -243,11 +475,10 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	local originPos = rootPart.Position
-	local viewRadius = if isOverlayMode then OVERLAY_VIEW_RADIUS else CORNER_VIEW_RADIUS
-	local mapPixelSize = if isOverlayMode then OVERLAY_MAP_SIZE else CORNER_MAP_SIZE
+	local viewRadius = if isOverlayMode then overlayViewRadius else cornerViewRadius
+	local mapPixelSize = if isOverlayMode then overlayMapSize else cornerMapSize
 	local pixelsPerStud = mapPixelSize / (viewRadius * 2)
 
-	-- Camera horizontal basis vectors so "Up" on the minimap matches "Up" on the screen
 	local camLook = camera.CFrame.LookVector
 	local forwardVec = Vector3.new(camLook.X, 0, camLook.Z)
 	if forwardVec.Magnitude > 0.001 then
@@ -257,7 +488,6 @@ RunService.RenderStepped:Connect(function()
 	end
 	local rightVec = Vector3.new(-forwardVec.Z, 0, forwardVec.X)
 
-	-- Rotate player's white dot pointer to match character facing relative to camera
 	local charLook = rootPart.CFrame.LookVector
 	local charX = charLook.X * rightVec.X + charLook.Z * rightVec.Z
 	local charY = -(charLook.X * forwardVec.X + charLook.Z * forwardVec.Z)
@@ -299,7 +529,7 @@ RunService.RenderStepped:Connect(function()
 	end
 	hideUnusedDots(wallFrames, wallCount)
 
-	-- 2. Draw Portals (Enter Dungeon & Return to Lobby)
+	-- 2. Draw Portals
 	local portalCount = 0
 	if dungeonMap then
 		for _, child in ipairs(dungeonMap:GetChildren()) do
@@ -310,13 +540,13 @@ RunService.RenderStepped:Connect(function()
 				local nx, ny = worldToMinimap(child.PrimaryPart.Position, originPos, rightVec, forwardVec, viewRadius)
 				local dot = getOrCreateDot(portalDots, portalCount, portalLayer, PORTAL_DOT_SIZE, color, true, 6)
 				dot.Position = UDim2.fromScale(nx, ny)
-				dot.Rotation = 45 -- Diamond shape
+				dot.Rotation = 45
 			end
 		end
 	end
 	hideUnusedDots(portalDots, portalCount)
 
-	-- 3. Draw Enemies (Red dots for Grunts, Orange dot for Boss)
+	-- 3. Draw Enemies
 	local enemiesFolder = workspace:FindFirstChild("Enemies")
 	local enemyDotCount = 0
 	local aliveDungeonEnemies = 0
@@ -329,7 +559,6 @@ RunService.RenderStepped:Connect(function()
 					aliveDungeonEnemies += 1
 					local isBoss = model:GetAttribute("IsBoss") == true
 					local nx, ny, inside = worldToMinimap(eRoot.Position, originPos, rightVec, forwardVec, viewRadius)
-					-- Always clamp boss & enemies onto radar edge even if slightly beyond viewRadius so player can find stragglers
 					if inside or isBoss or (eRoot.Position - originPos).Magnitude <= viewRadius * 1.6 then
 						enemyDotCount += 1
 						local size = if isBoss then BOSS_DOT_SIZE else ENEMY_DOT_SIZE
@@ -345,7 +574,7 @@ RunService.RenderStepped:Connect(function()
 	enemyCountLabel.Text = if aliveDungeonEnemies > 0 then ("ศัตรูเหลือ: %d"):format(aliveDungeonEnemies) else "เคลียร์หมดแล้ว!"
 	enemyCountLabel.TextColor3 = if aliveDungeonEnemies > 0 then Color3.fromRGB(255, 130, 130) else Color3.fromRGB(130, 245, 150)
 
-	-- 4. Draw Other Players (Allies)
+	-- 4. Draw Other Players
 	local allyCount = 0
 	for _, otherPlayer in ipairs(Players:GetPlayers()) do
 		if otherPlayer ~= player and otherPlayer.Character then

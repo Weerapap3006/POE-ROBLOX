@@ -634,6 +634,27 @@ local function setupDungeonPortals()
 			PlayerData.notify(player, "กลับมาที่โซนปลอดภัย (Lobby)", Color3.fromRGB(140, 240, 160))
 		end)
 	end
+
+	-- Listen for remote teleport requests (from Settings UI button)
+	local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+	local teleportRemote = remotesFolder:WaitForChild("TeleportRemote") :: RemoteEvent
+	teleportRemote.OnServerEvent:Connect(function(player: Player, destination: string)
+		local character = player.Character
+		local root = getAliveRoot(character)
+		if not character or not root then
+			return
+		end
+
+		if destination == "Lobby" then
+			local targetPos = if lobbySpawn then lobbySpawn.Position + Vector3.new(0, 4, 0) else Vector3.new(-40, 4, 32)
+			character:PivotTo(CFrame.new(targetPos))
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+			PlayerData.notify(player, "วาร์ปกลับสู่โซนปลอดภัย (Lobby)", Color3.fromRGB(140, 240, 160))
+		end
+	end)
 end
 
 -- ==========================================
