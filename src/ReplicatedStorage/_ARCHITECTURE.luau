@@ -89,12 +89,13 @@
    - แมพ / โมเดล / StarterCharacter     --> Team Create place (แก้ใน Studio ได้เลย)
    - game.rbxl ไม่ขึ้น git (.gitignore) เพราะแมพอยู่ใน Team Create แล้ว
 
-   ทุกครั้งที่เริ่มทำงาน:
-   1. git pull ก่อนเสมอ (เอาโค้ดล่าสุดของเพื่อนมา)
-   2. เปิด Team Create -> Connect Rojo
-      ดูรายการที่ Rojo จะเปลี่ยน: ถ้ามีสคริปต์ที่เราไม่ได้แก้ = ลืม pull -> กด Abort แล้ว pull ก่อน
-   3. แก้โค้ดใน VS Code -> เซฟ -> ทดสอบใน Studio
-   4. เสร็จแต่ละเรื่อง -> git commit + git push ทันที (อย่าค้างข้ามวัน)
+   Rojo ใน Team Create ให้ Connect ได้ทีละคน (__Rojo_SessionLock ใน ServerStorage)
+   เลยแบ่งเป็น 3 งาน (ขั้นตอนเต็มอยู่ใน README):
+   - แต่งแมพ      --> Team Create, ไม่ใช้ Rojo
+   - เขียน/เทสโค้ด --> place สำเนาในเครื่องตัวเอง (game.rbxl ที่ Save to File As จาก Team Create)
+                     git pull -> rojo serve -> เปิด game.rbxl -> Connect -> แก้ -> เทส -> commit + push
+                     ห้าม Publish to Roblox จาก game.rbxl (แมพเก่าจะทับ Team Create)
+   - ส่งโค้ดเข้าเกมจริง --> ทีละคน: git pull -> Connect เข้า Team Create -> เช็กรายการ -> Disconnect ทันที
 
    กันทับกัน:
    - แบ่งงานคนละไฟล์ ถ้าต้องแก้ไฟล์เดียวกันให้บอกกันก่อน
@@ -111,6 +112,8 @@
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-29]
+   - TEAM WORKFLOW (README + หัวข้อ 4): เปลี่ยนเป็นเทสโค้ดใน place สำเนา (game.rbxl)
+     เพราะ Rojo ใน Team Create ให้ Connect ได้ทีละคน -> ส่งโค้ดเข้า Team Create ทีละคนแล้ว Disconnect
    - README + หัวไฟล์นี้: ลิงก์ไป ARCHITECTURE.md (เอกสารระบบแบบละเอียด ที่ Weerapap3006 เพิ่มมา)
    - _ARCHITECTURE หัวข้อ 3: เปลี่ยนเป็น "แยกงาน แมพ = Studio / โค้ด = VS Code + GitHub"
      + เพิ่ม "ของใหม่ใส่ที่ไหน" และ "สิ่งที่โค้ดต้องการจากแมพ"

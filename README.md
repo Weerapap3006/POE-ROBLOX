@@ -81,24 +81,31 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 ## ทุกครั้งที่ทำงาน
 
-1. **ดึงโค้ดล่าสุดของเพื่อนก่อนเสมอ** (Terminal ใน VS Code: `` Ctrl+` ``)
+ใน Team Create **Rojo ยอมให้ Connect ได้ทีละคน** (ตอนมีคน Connect อยู่จะเห็น `__Rojo_SessionLock` ใน ServerStorage) เลยแบ่งงานเป็น 3 แบบ:
 
-   ```powershell
-   git pull
-   ```
+| งาน | ทำที่ไหน | ใช้ Rojo? |
+|---|---|---|
+| 🗺️ แต่งแมพ | Team Create | ไม่ใช้ |
+| 💻 เขียน/เทสโค้ด | **place สำเนา** ในเครื่องตัวเอง (`game.rbxl`) | ใช้ (ไม่ต้องรอกัน) |
+| 🚀 ส่งโค้ดเข้าเกมจริง | Team Create | ใช้ **ทีละคน** แล้วรีบ Disconnect |
 
-2. **เปิด Rojo** (ปล่อย terminal นี้รันค้างไว้ อย่าปิด)
+### 🗺️ แต่งแมพ
 
-   ```powershell
-   rojo serve
-   ```
+เปิด place **Project poe** ผ่าน Team Create แล้วแก้ใน Studio ได้เลย ไม่ต้องใช้ Rojo หรือ Git
 
-3. **เปิด Studio** → เข้า place **Project poe** ผ่าน Team Create → แท็บ **Plugins** → **Rojo** → **Connect**
-   - Rojo จะโชว์รายการสคริปต์ที่จะถูกเปลี่ยนก่อน
-   - **ถ้ามีสคริปต์ที่เราไม่ได้แก้อยู่ในรายการ = ลืม `git pull`** → กด **Abort** แล้วกลับไปข้อ 1
-4. **แก้โค้ดใน VS Code** → เซฟ (Rojo ส่งเข้า Studio ทันที) → กด Play ทดสอบใน Studio
-5. **จดลง CHANGELOG** ในหัวข้อ 6 ของ [`_ARCHITECTURE.luau`](src/ReplicatedStorage/_ARCHITECTURE.luau) ว่าแก้อะไร
-6. **เสร็จแต่ละเรื่อง ส่งขึ้น GitHub ทันที** (อย่าเก็บไว้ข้ามวัน)
+### 💻 เขียนและเทสโค้ด
+
+**ทำสำเนา place** (ครั้งแรก หรือตอนอยากได้แมพล่าสุดมาเทส):
+เปิด Team Create → **File → Save to File As...** → บันทึกเป็น `game.rbxl` ในโฟลเดอร์ `POE-ROBLOX` (ทับของเดิมได้ ไฟล์นี้ไม่ขึ้น git)
+
+**ทุกครั้งที่เขียนโค้ด** (Terminal ใน VS Code: `` Ctrl+` ``):
+
+1. ดึงโค้ดล่าสุดของเพื่อน: `git pull`
+2. เปิด Rojo: `rojo serve` (ปล่อย terminal นี้รันค้างไว้)
+3. ใน Studio: **File → Open from File** → เปิด `game.rbxl` → **Plugins → Rojo → Connect**
+4. แก้โค้ดใน VS Code → เซฟ (Rojo ส่งเข้า Studio ทันที) → กด Play ทดสอบ
+5. จดลง CHANGELOG ในโน้ตของตัวเองว่าแก้อะไร
+6. เสร็จแต่ละเรื่อง ส่งขึ้น GitHub ทันที (อย่าเก็บไว้ข้ามวัน):
 
    ```powershell
    git add .
@@ -106,6 +113,20 @@ git config --global user.email "อีเมล GitHub ของคุณ"
    git pull
    git push
    ```
+
+> ⚠️ **ห้ามกด Publish to Roblox จาก `game.rbxl`** เพราะแมพในสำเนาเป็นของเก่า จะไปทับงานแมพใน Team Create
+
+### 🚀 ส่งโค้ดเข้าเกมจริง (Team Create)
+
+ทำเมื่อโค้ดบน GitHub พร้อมแล้ว **ทีละคน**:
+
+1. `git pull` เพื่อให้มีโค้ดล่าสุดของทั้งสองคน
+2. `rojo serve`
+3. เปิด Team Create → **Plugins → Rojo → Connect**
+   - Rojo จะโชว์รายการที่จะเปลี่ยนก่อน ควรมีแต่สคริปต์ที่เพิ่ง push
+   - ถ้ามีอะไรแปลกๆ (เช่นสคริปต์ที่ไม่ได้มีใครแก้) → กด **Abort** แล้วถามกันก่อน
+4. กด **Disconnect** ทันทีที่ sync เสร็จ เพื่อปล่อยให้อีกคนใช้ได้
+5. ถ้า Connect ไม่ได้เพราะอีกคน sync อยู่ ให้รอเขา Disconnect ก่อน
 
 ---
 
