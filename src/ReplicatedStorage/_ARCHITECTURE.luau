@@ -3,6 +3,7 @@
    PROJECT POE - GAME ARCHITECTURE REFERENCE
    (ไฟล์นี้ sync ผ่าน Rojo: src/ReplicatedStorage/_ARCHITECTURE.luau
     แก้ใน VS Code เท่านั้น ถ้าแก้ใน Studio จะโดน Rojo เขียนทับ)
+   (อธิบายแต่ละระบบแบบละเอียด + flow การต่อสู้ -> ARCHITECTURE.md ที่ root ของ repo)
 ==============================================================================
 
 1. โครงสร้างโฟลเดอร์หลัก (EXPLORER STRUCTURE):
@@ -110,6 +111,7 @@
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-29]
+   - README + หัวไฟล์นี้: ลิงก์ไป ARCHITECTURE.md (เอกสารระบบแบบละเอียด ที่ Weerapap3006 เพิ่มมา)
    - _ARCHITECTURE หัวข้อ 3: เปลี่ยนเป็น "แยกงาน แมพ = Studio / โค้ด = VS Code + GitHub"
      + เพิ่ม "ของใหม่ใส่ที่ไหน" และ "สิ่งที่โค้ดต้องการจากแมพ"
      + KNOWN ISSUES: Workspace.Script1 (สคริปต์ว่างในแมพ) ต้องลบใน Studio

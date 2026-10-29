@@ -7,6 +7,8 @@
 
 โครงสร้างเกมทั้งหมด, ไฟล์ไหนแก้อะไร และบันทึกการแก้ไข ดูได้ที่ [`src/ReplicatedStorage/_ARCHITECTURE.luau`](src/ReplicatedStorage/_ARCHITECTURE.luau)
 
+อธิบายแต่ละระบบแบบละเอียด (หน้าที่ของแต่ละสคริปต์, flow การต่อสู้ Client ↔ Server) ดูที่ [`ARCHITECTURE.md`](ARCHITECTURE.md)
+
 ---
 
 ## ตั้งค่าครั้งแรก (ทำครั้งเดียว)
