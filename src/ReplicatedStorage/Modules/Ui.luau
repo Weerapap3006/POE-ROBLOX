@@ -17,6 +17,8 @@ Ui.Colors = {
 	TextDim = Color3.fromRGB(160, 165, 180),
 	Accent = Color3.fromRGB(120, 210, 255),
 	Health = Color3.fromRGB(215, 50, 60),
+	Mana = Color3.fromRGB(60, 120, 235),
+	EnergyShield = Color3.fromRGB(140, 225, 255),
 	Exp = Color3.fromRGB(240, 190, 60),
 	Warning = Color3.fromRGB(255, 120, 90),
 }

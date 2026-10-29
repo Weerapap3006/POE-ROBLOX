@@ -1,5 +1,5 @@
 -- ==========================================
--- COMBAT CLIENT (Aiming, Skill Input & Skill Bar, Dodge Roll, VFX, Enemy Telegraphs & Damage Numbers)
+-- COMBAT CLIENT (Aiming, Skill Input & Skill Bar, Dodge Roll, Life/Mana Flasks, VFX, Enemy Telegraphs & Damage Numbers)
 -- Path: StarterPlayer.StarterPlayerScripts.CombatClient
 -- ==========================================
 local Players = game:GetService("Players")
@@ -16,6 +16,7 @@ local camera = workspace.CurrentCamera
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local combatRemote = remotesFolder:WaitForChild("CombatRemote") :: RemoteEvent
 local dodgeRemote = remotesFolder:WaitForChild("DodgeRemote") :: RemoteEvent
+local flaskRemote = remotesFolder:WaitForChild("FlaskRemote") :: RemoteEvent
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local SkillData = require(modulesFolder:WaitForChild("SkillData"))
@@ -34,6 +35,12 @@ local TOUCH_AUTO_AIM_RANGE = 25 -- Mobile: skills aim at the nearest enemy withi
 local DODGE_KEY = Enum.KeyCode.Space -- Takes over the jump key (jumping is turned off)
 local ROLL_DIP = 0.8 -- Studs the body drops at the middle of the roll pose
 local ROLL_PIVOT = 1 -- Studs above the hips that the body somersaults around
+-- Flask slots after the skills (Kind = key in PlayerStats.FLASKS). Sparkle = rises from a player drinking it
+local FLASK_SLOTS: { { Kind: string, KeyText: string, Key: Enum.KeyCode, Liquid: Color3, Sparkle: Color3 } } = {
+	{ Kind = "Life", KeyText = "1", Key = Enum.KeyCode.One, Liquid = Ui.Colors.Health, Sparkle = Color3.fromRGB(255, 110, 120) },
+	{ Kind = "Mana", KeyText = "2", Key = Enum.KeyCode.Two, Liquid = Ui.Colors.Mana, Sparkle = Color3.fromRGB(110, 160, 255) },
+}
+local NO_MANA_SHADE = Color3.fromRGB(20, 50, 140) -- Covers a skill slot while there isn't enough mana for it
 local SLASH_COLOR = Color3.fromRGB(120, 210, 255) -- Anime cyan energy slash
 local ENEMY_ATTACK_COLOR = Color3.fromRGB(255, 60, 50)
 local ENEMY_ALERT_COLOR = Color3.fromRGB(255, 200, 60) -- "!" over an enemy that just spotted a player
@@ -520,6 +527,10 @@ local function getCooldown(skillId: string): number
 	if skillId == "Dodge" then
 		return PlayerStats.DODGE_COOLDOWN
 	end
+	local flaskKind = string.match(skillId, "^(%a+)Flask$") -- "LifeFlask" / "ManaFlask"
+	if flaskKind then
+		return PlayerStats.FLASKS[flaskKind].Duration
+	end
 	local attackSpeed = player:GetAttribute("AttackSpeed") or 0
 	return PlayerStats.getCooldown(SkillData[skillId].Cooldown, attackSpeed)
 end
@@ -544,6 +555,10 @@ local function useSkill(skillId: string)
 
 	-- Client-side cooldown check for responsiveness (the server checks again for real)
 	if now - (lastUseTimes[skillId] or -math.huge) < getCooldown(skillId) then
+		return
+	end
+	-- Not enough mana: nothing happens (the slot is shaded blue). The server checks the real mana again
+	if (player:GetAttribute("Mana") or 0) < SkillData[skillId].ManaCost then
 		return
 	end
 	lastUseTimes[skillId] = now
@@ -698,17 +713,95 @@ ContextActionService:BindActionAtPriority("Dodge", function(_, inputState: Enum.
 end, false, Enum.ContextActionPriority.High.Value, DODGE_KEY)
 
 -- ==========================================
--- 7. SKILL BAR UI (cooldowns; on mobile these are the attack buttons)
+-- 7. LIFE & MANA FLASKS (keys 1 / 2, mobile Life / Mana buttons)
+-- ==========================================
+-- Uses left come from the server ("LifeFlaskCharges" / "ManaFlaskCharges" attributes, see PlayerResources),
+-- which also does the recovering
+local function getFlaskCharges(kind: string): number
+	return player:GetAttribute(kind .. "FlaskCharges") or 0
+end
+
+local function getFlaskSlot(kind: string)
+	for _, flask in ipairs(FLASK_SLOTS) do
+		if flask.Kind == kind then
+			return flask
+		end
+	end
+	return nil
+end
+
+-- Sparkles in the flask's color rise from the body while it recovers
+local function playFlaskVFX(character: Model, kind: string)
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local flask = getFlaskSlot(kind)
+	local duration = PlayerStats.FLASKS[kind] and PlayerStats.FLASKS[kind].Duration
+	if not rootPart or not flask or not duration then
+		return
+	end
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "FlaskVFX"
+	emitter.Color = ColorSequence.new(flask.Sparkle)
+	emitter.LightEmission = 0.6
+	emitter.Size = NumberSequence.new(0.5, 0)
+	emitter.Transparency = NumberSequence.new(0.1, 1)
+	emitter.Lifetime = NumberRange.new(0.6, 0.9)
+	emitter.Speed = NumberRange.new(3, 5)
+	emitter.SpreadAngle = Vector2.new(25, 25)
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Rate = 18
+	emitter.Parent = rootPart
+	task.delay(duration, function()
+		emitter.Enabled = false
+	end)
+	Debris:AddItem(emitter, duration + 1)
+end
+
+local function drinkFlask(kind: string)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+
+	-- Same checks as the server: not already full, at least one use, one recovery per flask at a time
+	local isFull = if kind == "Life"
+		then humanoid.Health >= humanoid.MaxHealth
+		else (player:GetAttribute("Mana") or 0) >= (player:GetAttribute("MaxMana") or 0)
+	if isFull or getFlaskCharges(kind) < 1 then
+		return
+	end
+	local slotId = kind .. "Flask"
+	local now = os.clock()
+	if now - (lastUseTimes[slotId] or -math.huge) < getCooldown(slotId) then
+		return
+	end
+	lastUseTimes[slotId] = now
+
+	playFlaskVFX(character, kind)
+	flaskRemote:FireServer(kind)
+end
+
+for _, flask in ipairs(FLASK_SLOTS) do
+	ContextActionService:BindAction(flask.Kind .. "Flask", function(_, inputState: Enum.UserInputState)
+		if inputState == Enum.UserInputState.Begin then
+			drinkFlask(flask.Kind)
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, flask.Key)
+end
+
+-- ==========================================
+-- 8. SKILL BAR UI (cooldowns; on mobile these are the attack buttons)
 -- ==========================================
 local SLOT_SIZE = if isTouchOnly then 84 else 64
 
 local skillGui = Ui.screenGui("SkillBar", 1)
 local bar = Ui.new("Frame", {
 	Name = "Bar",
-	-- PC: bottom center, Dodge is the last slot. Mobile: right side, above the Dodge button
+	-- PC: bottom center, the flasks and Dodge are the last slots. Mobile: right side, above the flask / Dodge buttons
 	AnchorPoint = if isTouchOnly then Vector2.new(1, 1) else Vector2.new(0.5, 1),
 	Position = if isTouchOnly then UDim2.new(1, -24, 1, -150) else UDim2.new(0.5, 0, 1, -16),
-	Size = UDim2.fromOffset((if isTouchOnly then #SKILL_BAR else #SKILL_BAR + 1) * (SLOT_SIZE + 10), SLOT_SIZE),
+	Size = UDim2.fromOffset((if isTouchOnly then #SKILL_BAR else #SKILL_BAR + #FLASK_SLOTS + 1) * (SLOT_SIZE + 10), SLOT_SIZE),
 	BackgroundTransparency = 1,
 	Parent = skillGui,
 }, {
@@ -722,7 +815,7 @@ local bar = Ui.new("Frame", {
 
 local cooldownOverlays: { [string]: { Overlay: Frame, Text: TextLabel } } = {}
 
--- One square slot with a cooldown overlay. id = skill id, or "Dodge" (see getCooldown)
+-- One square slot with a cooldown overlay. id = skill id, "LifeFlask" / "ManaFlask" or "Dodge" (see getCooldown)
 local function createSlot(id: string, displayName: string, keyText: string, layoutOrder: number, parent: Instance): TextButton
 	local button = Ui.button({
 		Name = id,
@@ -783,8 +876,42 @@ for index, entry in ipairs(SKILL_BAR) do
 	end)
 end
 
+-- Flask slots: liquid level = charges / max (fills up between uses as kills add charges), name shows uses left.
+-- Mobile: a row left of the Dodge button
+for index, flask in ipairs(FLASK_SLOTS) do
+	local button = createSlot(flask.Kind .. "Flask", flask.Kind, flask.KeyText, #SKILL_BAR + index, if isTouchOnly then skillGui else bar)
+	if isTouchOnly then
+		button.AnchorPoint = Vector2.new(1, 1)
+		button.Position = UDim2.new(1, -24 - (SLOT_SIZE + 12) * (#FLASK_SLOTS - index + 1), 1, -40)
+	end
+	button.Activated:Connect(function()
+		drinkFlask(flask.Kind)
+	end)
+
+	local liquid = Ui.new("Frame", {
+		Name = "Liquid",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = flask.Liquid,
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+		ZIndex = 0, -- Behind the slot's text, under the cooldown overlay
+		Parent = button,
+	}, { Ui.corner(10) })
+	local nameLabel = button:FindFirstChild("SkillName") :: TextLabel
+
+	local function updateCharges()
+		local charges = getFlaskCharges(flask.Kind)
+		liquid.Size = UDim2.fromScale(1, math.clamp(charges / PlayerStats.FLASKS[flask.Kind].MaxCharges, 0, 1))
+		nameLabel.Text = string.format("%s x%d", flask.Kind, math.floor(charges))
+	end
+	player:GetAttributeChangedSignal(flask.Kind .. "FlaskCharges"):Connect(updateCharges)
+	updateCharges()
+end
+
 -- Mobile: Dodge takes the spot of Roblox's jump button (bottom right, under the skills)
-local dodgeButton = createSlot("Dodge", "Dodge", "Space", #SKILL_BAR + 1, if isTouchOnly then skillGui else bar)
+local dodgeButton = createSlot("Dodge", "Dodge", "Space", #SKILL_BAR + #FLASK_SLOTS + 1, if isTouchOnly then skillGui else bar)
 if isTouchOnly then
 	dodgeButton.AnchorPoint = Vector2.new(1, 1)
 	dodgeButton.Position = UDim2.new(1, -24, 1, -40)
@@ -793,12 +920,20 @@ dodgeButton.Activated:Connect(dodge)
 
 RunService.RenderStepped:Connect(function()
 	local now = os.clock()
+	local mana = player:GetAttribute("Mana") or 0
 	for skillId, ui in pairs(cooldownOverlays) do
 		local cooldown = getCooldown(skillId)
 		local remaining = cooldown - (now - (lastUseTimes[skillId] or -math.huge))
+		-- Not enough mana: the whole slot stays shaded blue until mana regenerates
+		local skill = SkillData[skillId]
+		local lacksMana = skill ~= nil and mana < skill.ManaCost
+		ui.Overlay.BackgroundColor3 = if lacksMana then NO_MANA_SHADE else Color3.new(0, 0, 0)
 		if remaining > 0 then
 			ui.Overlay.Size = UDim2.fromScale(1, remaining / cooldown)
 			ui.Text.Text = if remaining >= 1 then string.format("%d", math.ceil(remaining)) else ""
+		elseif lacksMana then
+			ui.Overlay.Size = UDim2.fromScale(1, 1)
+			ui.Text.Text = ""
 		else
 			ui.Overlay.Size = UDim2.fromScale(1, 0)
 			ui.Text.Text = ""
@@ -812,11 +947,17 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ==========================================
--- SERVER EVENTS (damage numbers, other players' skills and rolls, enemy alerts and attacks)
+-- SERVER EVENTS (damage numbers, other players' skills, rolls and flasks, enemy alerts and attacks)
 -- ==========================================
 dodgeRemote.OnClientEvent:Connect(function(character: Model)
 	if character and character ~= player.Character then
 		playRollPose(character)
+	end
+end)
+
+flaskRemote.OnClientEvent:Connect(function(character: Model, kind: string)
+	if character and character ~= player.Character then
+		playFlaskVFX(character, kind)
 	end
 end)
 

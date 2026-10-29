@@ -224,6 +224,9 @@ local function refreshStats(player: Player, profile: Profile, healToFull: boolea
 	player:SetAttribute("Exp", profile.Exp)
 	player:SetAttribute("ExpToNext", PlayerStats.expToNext(profile.Level))
 	player:SetAttribute("MaxHealth", profile.Stats.MaxHealth)
+	player:SetAttribute("MaxMana", profile.Stats.MaxMana)
+	player:SetAttribute("MaxEnergyShield", profile.Stats.MaxEnergyShield)
+	player:SetAttribute("EnergyShieldRecharge", profile.Stats.EnergyShieldRecharge)
 	player:SetAttribute("FlatDamage", profile.Stats.FlatDamage)
 	player:SetAttribute("AttackSpeed", profile.Stats.AttackSpeed)
 

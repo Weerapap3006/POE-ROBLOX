@@ -17,6 +17,7 @@ local PlayerStats = require(modulesFolder:WaitForChild("PlayerStats"))
 local serverModules = ServerStorage:WaitForChild("Modules")
 local PlayerData = require(serverModules:WaitForChild("PlayerData"))
 local EnemyService = require(serverModules:WaitForChild("EnemyService"))
+local PlayerResources = require(serverModules:WaitForChild("PlayerResources"))
 
 -- Track cooldowns (per skill) and combo per player on the Server (Anti-Exploit)
 local playerCooldowns: { [Player]: { [string]: number } } = {}
@@ -63,6 +64,10 @@ combatRemote.OnServerEvent:Connect(function(player: Player, skillId: any, target
 	local cooldown = PlayerStats.getCooldown(skill.Cooldown, stats.AttackSpeed)
 	-- Allow slight network tolerance (0.05s) for ping jitter
 	if now - (cooldowns[skillId] or 0) < (cooldown - 0.05) then
+		return
+	end
+	-- Mana is paid only once the cooldown is ready (not enough = the skill doesn't fire, no cooldown starts)
+	if not PlayerResources.spendMana(player, skill.ManaCost) then
 		return
 	end
 	cooldowns[skillId] = now

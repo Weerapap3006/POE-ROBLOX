@@ -1,5 +1,5 @@
 -- ==========================================
--- ENEMY SERVICE (Spawning, Chase/Attack AI, Damage, Death -> EXP & Loot)
+-- ENEMY SERVICE (Spawning, Chase/Attack AI, Damage, Death -> EXP, Flask Charges & Loot)
 -- Path: ServerStorage.Modules.EnemyService
 -- ==========================================
 local Players = game:GetService("Players")
@@ -8,7 +8,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local EnemyData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("EnemyData"))
+local PlayerStats = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PlayerStats"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
+local PlayerResources = require(script.Parent:WaitForChild("PlayerResources"))
 local Loot = require(script.Parent:WaitForChild("Loot"))
 
 local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CombatRemote") :: RemoteEvent
@@ -330,10 +332,12 @@ function onDeath(state: EnemyState, _point: SpawnPoint)
 	local data = state.Data
 	local model = state.Model
 
-	-- EXP goes to everyone who hit it (co-op: nobody loses out on the last hit)
+	-- EXP and flask charges go to everyone who hit it (co-op: nobody loses out on the last hit)
+	local flaskCharge = if data.IsBoss then PlayerStats.FLASK_CHARGE_PER_BOSS_KILL else PlayerStats.FLASK_CHARGE_PER_KILL
 	for player in pairs(state.Contributors) do
 		if player.Parent then
 			PlayerData.addExp(player, data.Exp)
+			PlayerResources.addFlaskCharges(player, flaskCharge)
 		end
 	end
 
@@ -370,7 +374,13 @@ local function damagePlayer(character: Model, amount: number)
 	if (character:GetAttribute("InvulnerableUntil") or 0) > os.clock() then
 		return -- Mid dodge roll (CombatServer sets this)
 	end
-	humanoid:TakeDamage(amount)
+	-- Players: energy shield takes the hit first (PlayerResources)
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		PlayerResources.takeDamage(player, humanoid, amount)
+	else
+		humanoid:TakeDamage(amount)
+	end
 	combatRemote:FireAllClients("DamageDealt", character, amount, false)
 end
 
@@ -657,6 +667,7 @@ local function setupDungeonPortals()
 			if humanoid then
 				humanoid.Health = humanoid.MaxHealth
 			end
+			PlayerResources.restoreAll(player) -- Full mana, energy shield and flasks too
 			PlayerData.notify(player, "Entered Dungeon! All monsters have been reset", Color3.fromRGB(110, 215, 255))
 		end)
 	end
@@ -686,6 +697,7 @@ local function setupDungeonPortals()
 			if humanoid then
 				humanoid.Health = humanoid.MaxHealth
 			end
+			PlayerResources.restoreAll(player) -- Full mana, energy shield and flasks too
 			PlayerData.notify(player, "Returned to Safe Zone (Lobby)", Color3.fromRGB(140, 240, 160))
 		end)
 	end
@@ -707,6 +719,7 @@ local function setupDungeonPortals()
 			if humanoid then
 				humanoid.Health = humanoid.MaxHealth
 			end
+			PlayerResources.restoreAll(player) -- Full mana, energy shield and flasks too
 			PlayerData.notify(player, "Returned to Safe Zone (Lobby)", Color3.fromRGB(140, 240, 160))
 		end
 	end)

@@ -17,6 +17,8 @@
 
 เพิ่มเติมนอกรายการ MVP ที่จำเป็นต่อการเล่นครบลูป: เลเวล/EXP, ผู้เล่นตายแล้วเกิดใหม่, แถบเลือดศัตรู, มินิแมพ (`MinimapClient` มุมขวาบน + กด `M` ขยายกลางจอ + ปุ่ม `SET` ตั้งค่าแบ่งหมวดหมู่และวาร์ปกลับ Lobby กด `P`), กลิ้งหลบ (Dodge แทนการกระโดด), ปุ่มบนมือถือ
 
+เฟส 7 (ขยายเกม, ไอเดียเรียงไว้ในหัวข้อ "7. ไว้ทีหลัง" ของ Google Doc): **ขวดยาเลือด + ขวดมานา** (กด `1` / `2`), **มานา** (สกิลที่มี `ManaCost` ใช้มานา, Spin Slash = 15), **Energy Shield** (รับดาเมจก่อนเลือด ได้จาก affix ของไอเทม) — ระบบเหล่านี้อยู่ใน `PlayerResources`
+
 ---
 
 ## 1. แผนผังโครงสร้างใน Roblox Studio (Explorer Hierarchy)
@@ -40,32 +42,35 @@
  ┃  ┃  ┣ ⚡ CombatRemote (RemoteEvent)    <-- ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู
  ┃  ┃  ┣ ⚡ InventoryRemote (RemoteEvent) <-- สวมใส่/ถอด/ทิ้งของ + ส่งข้อมูลกระเป๋า
  ┃  ┃  ┣ ⚡ DodgeRemote (RemoteEvent)     <-- กลิ้งหลบ (ขอช่วงอมตะจาก Server + ให้คนอื่นเห็นท่ากลิ้ง)
+ ┃  ┃  ┣ ⚡ FlaskRemote (RemoteEvent)     <-- ดื่มขวดยาเลือด/มานา (Server หักจำนวนแล้วค่อยๆ ฟื้น + ให้คนอื่นเห็นประกาย)
  ┃  ┃  ┣ ⚡ NotifyRemote (RemoteEvent)    <-- ข้อความกลางจอ (ได้ของ, เลเวลอัป, เคลียร์ด่าน)
  ┃  ┃  ┗ ⚡ TeleportRemote (RemoteEvent)  <-- คำขอวาร์ปกลับโซนปลอดภัย (Lobby) จากหน้าต่างตั้งค่า
  ┃  ┗ 📂 Modules                       <-- ข้อมูลกลาง (ปรับตัวเลขเกมที่นี่)
  ┃     ┣ 📜 SkillData                  <-- ค่าสกิล (ดาเมจ, คูลดาวน์, ระยะ)
  ┃     ┣ 📜 EnemyData                  <-- ค่าศัตรู (เลือด, ความเร็ว, ท่าโจมตี, EXP, ตารางดรอป)
  ┃     ┣ 📜 ItemData                   <-- ไอเทมพื้นฐาน, affix, ความหายาก
- ┃     ┣ 📜 PlayerStats                <-- สเตตัสพื้นฐาน, เลือด/ดาเมจต่อเลเวล, EXP ที่ต้องใช้
+ ┃     ┣ 📜 PlayerStats                <-- สเตตัสพื้นฐาน, เลือด/มานา/ดาเมจต่อเลเวล, EXP ที่ต้องใช้, ค่ากลิ้งหลบ/ขวดยา/ES
  ┃     ┗ 📜 Ui                         <-- สี/ฟอนต์/ตัวช่วยสร้าง UI (Client ใช้)
  ┃
  ┣ 📂 ServerScriptService              <-- [โซน Server: ความลับ 100% กันโปร]
- ┃  ┣ 📜 CombatServer (Script)          <-- ตรวจคูลดาวน์จริง, Hitbox, คำนวณดาเมจ
+ ┃  ┣ 📜 CombatServer (Script)          <-- ตรวจคูลดาวน์ + หักมานาจริง, Hitbox, คำนวณดาเมจ, กลิ้งหลบ
  ┃  ┣ 📜 EnemyServer (Script)           <-- สั่ง EnemyService.start()
- ┃  ┗ 📜 PlayerDataServer (Script)      <-- สั่ง PlayerData.start()
+ ┃  ┣ 📜 PlayerDataServer (Script)      <-- สั่ง PlayerData.start()
+ ┃  ┗ 📜 PlayerResourcesServer (Script) <-- สั่ง PlayerResources.start()
  ┃
  ┣ 📂 ServerStorage                    <-- [โซน Server: โมดูลที่ Client ห้ามเห็น]
  ┃  ┗ 📂 Modules
  ┃     ┣ 📜 PlayerData                 <-- เลเวล, EXP, กระเป๋า, เซฟ/โหลด DataStore
- ┃     ┣ 📜 EnemyService               <-- เกิดศัตรู, AI ไล่ตี, ตาย -> EXP + ดรอป, รีเซ็ตด่าน & วาร์ปกลับ Lobby
+ ┃     ┣ 📜 PlayerResources            <-- มานา (ฟื้นเอง/หักตอนใช้สกิล), Energy Shield (รับดาเมจก่อน/ชาร์จคืน), ขวดยาเลือด/มานา
+ ┃     ┣ 📜 EnemyService               <-- เกิดศัตรู, AI ไล่ตี, ตาย -> EXP + ขวดยา + ดรอป, รีเซ็ตด่าน & วาร์ปกลับ Lobby
  ┃     ┗ 📜 Loot                       <-- สุ่มไอเทม + affix, วางของบนพื้นให้เก็บ
  ┃
  ┗ 📂 StarterPlayer
     ┣ 🧍 StarterCharacter (Model)       <-- หุ่น R15 Blocky สไตล์ Anime + เส้นขอบ CelShadeOutline (แก้ใน Studio)
     ┗ 📂 StarterPlayerScripts          <-- สคริปต์ฝั่ง Client
        ┣ 📜 CameraScript (LocalScript)  <-- กล้อง 2.5D Isometric + ซูม
-       ┣ 📜 CombatClient (LocalScript)  <-- เล็ง, กดสกิล, กลิ้งหลบ, แถบสกิล, VFX, เตือนท่าศัตรู, เลขดาเมจ
-       ┣ 📜 HudClient (LocalScript)     <-- แถบเลือด/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
+       ┣ 📜 CombatClient (LocalScript)  <-- เล็ง, กดสกิล, กลิ้งหลบ, ขวดยา, แถบสกิล, VFX, เตือนท่าศัตรู, เลขดาเมจ
+       ┣ 📜 HudClient (LocalScript)     <-- แถบ ES/เลือด/มานา/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
        ┣ 📜 InventoryClient (LocalScript) <-- หน้าต่างกระเป๋า (กด B)
        ┣ 📜 EnemyVisualsClient (LocalScript) <-- ท่าเดินศัตรู + คุมจำนวน Highlight ไม่ให้เกิน 31
        ┗ 📜 MinimapClient (LocalScript) <-- มินิแมพมุมขวาบน + กด M ขยายกลางจอ + ปุ่มตั้งค่า SET (กด P)
@@ -97,26 +102,30 @@
      * ท่าฟัน = เหวี่ยงแขน (`RightShoulder`) + บิดเอว (`Waist`) ด้วย `Motor6D.Transform` ซึ่งต้องเขียนซ้ำทุกเฟรมใน `RunService.PreSimulation` (รันหลัง Animator ไม่งั้นท่าเดิน/ยืนจะทับจนมองไม่เห็น)
      * **กลิ้งหลบ (Dodge):** กด **Space** (PC) หรือปุ่ม `Dodge` ขวาล่าง (มือถือ ตรงที่เคยเป็นปุ่มกระโดด) → กลิ้งไปทางที่เดินอยู่ (ยืนเฉยๆ = ไปทางเมาส์ / ทางที่หันบนมือถือ) ไกล `DODGE_DISTANCE` ใน `DODGE_DURATION` วิ ด้วย `LinearVelocity` (คุมแค่แกน X/Z ตกจากขอบได้ปกติ) + ท่าตีลังกาที่ข้อต่อ `LowerTorso.Root` ระหว่างกลิ้งตีไม่ได้ แล้วส่ง `DodgeRemote:FireServer(direction)` ให้ Server เปิดช่วงอมตะ
      * **ไม่มีกระโดด:** ตั้ง `JumpPower` / `JumpHeight` = 0 + ปิดสถานะ `Jumping` ทุกครั้งที่เกิด (ปุ่มกระโดดของ Roblox บนมือถือหายไปเอง) และผูก Space กับกลิ้งหลบด้วย `ContextActionService` ที่ priority สูงกว่าปุ่มกระโดดเดิม
-     * แถบสกิลพร้อมแสดงคูลดาวน์ (PC: กลางล่าง มีช่อง Dodge ต่อท้าย / มือถือ: ขวา เหนือปุ่ม Dodge)
+     * **มานา:** ก่อนใช้สกิลเช็ค attribute `Mana` ≥ `ManaCost` ของสกิล (ไม่พอ = ไม่ตี, Server เช็คซ้ำ) ช่องสกิลที่มานาไม่พอจะมีสีน้ำเงินทึบทับ (`NO_MANA_SHADE`) จนกว่ามานาจะฟื้นพอ
+     * **ขวดยาเลือด / มานา:** กด **1** = เลือด (`Life`), **2** = มานา (`Mana`) หรือปุ่ม `Life` / `Mana` ข้างปุ่ม Dodge (มือถือ) → ถ้ายังไม่เต็ม, เหลืออย่างน้อย 1 ครั้ง (attribute `LifeFlaskCharges` / `ManaFlaskCharges`) และขวดนั้นไม่ได้กำลังฟื้นอยู่ → ประกายสีของขวดลอยขึ้นจากตัว (`ParticleEmitter` นาน `Duration` ของขวด) แล้วส่ง `FlaskRemote:FireServer(kind)` ให้ Server หักจำนวนและค่อยๆ ฟื้น ดื่มระหว่างกลิ้งได้
+     * แถบสกิลพร้อมแสดงคูลดาวน์ (PC: กลางล่าง มีช่อง Life + Mana + Dodge ต่อท้าย / มือถือ: ขวา เหนือแถวปุ่ม Life, Mana, Dodge) ช่องขวดมีน้ำสีของขวดสูงตามจำนวนที่เหลือ / `MaxCharges` และชื่อบอกจำนวนครั้งที่ใช้ได้ (`Life x2`)
      * รับ `DamageDealt` → เลขดาเมจเด้ง (ศัตรู: ขาว/คริเหลือง, ผู้เล่นโดน: แดง) + กระพริบขาว
      * รับ `ReplicateSkill` → เล่นสกิลของผู้เล่นคนอื่น
      * รับ `EnemyAttack` → เตือนก่อนโดนตี: ศัตรูธรรมดาขอบตัวเป็นสีแดง, บอสมีวงแดงบนพื้นค่อยๆ เต็ม
      * รับ `EnemyAlert` → ศัตรูที่เพิ่งเห็นเรามี "!" สีเหลืองเด้งขึ้นบนหัวช่วงที่ยืนนิ่งก่อนพุ่งเข้ามา
      * รับ `DodgeRemote` → เล่นท่ากลิ้งของผู้เล่นคนอื่น
+     * รับ `FlaskRemote` → ประกายของผู้เล่นคนอื่นที่ดื่มขวดยา (แดง = เลือด, น้ำเงิน = มานา)
    * **จุดที่ปรับแก้บ่อย:**
      * `SKILL_BAR`: ลำดับสกิลบนจอและปุ่มที่ใช้กด
      * `SWING_DURATION`: เวลาเหวี่ยงออกแล้วกลับของท่าฟัน (`0.18` วิ)
      * `swingAngle` / `sideAngle` / `twist` ใน `playSlashVFX`: องศาเหวี่ยงแขนและบิดเอว
      * `SLASH_COLOR`, `ENEMY_ATTACK_COLOR`, `ENEMY_ALERT_COLOR`: สีคลื่นดาบของเรา / สีเตือนท่าศัตรู / สี "!"
      * `DODGE_KEY` (ปุ่มกลิ้ง), `ROLL_DIP` / `ROLL_PIVOT` (ท่าตีลังกา) — ระยะ/คูลดาวน์/ช่วงอมตะอยู่ใน `PlayerStats`
+     * `FLASK_SLOTS` (ลำดับช่องขวด, ปุ่ม, สีน้ำในช่อง, สีประกาย), `NO_MANA_SHADE` (สีทับช่องตอนมานาไม่พอ) — จำนวนครั้ง/ฟื้นเท่าไร/นานแค่ไหนอยู่ใน `PlayerStats.FLASKS`
      * สี / ขนาดตัวเลขดาเมจ: `label.TextColor3` และ `billboard.Size` ใน `showHitFeedback`
 
 3. **`HudClient` (`LocalScript`)**
-   * **หน้าที่:** แถบเลือด + เลเวล + EXP ของเรา (PC: ซ้ายล่าง / มือถือ: ซ้ายบน), แถบเลือดเล็กบนหัวศัตรูทุกตัวใน `Workspace.Enemies`, แถบเลือดบอสใหญ่ด้านบนเมื่ออยู่ใกล้บอส, ข้อความจาก `NotifyRemote`, หน้าจอ "YOU DIED" พร้อมนับถอยหลังเกิดใหม่ ("Respawning in Xs") และปิดแถบเลือดเดิมของ Roblox
+   * **หน้าที่:** แถบ Energy Shield (ฟ้าอ่อน บนสุด โชว์เฉพาะตอนมี ES จากไอเทม) + เลือด + มานา (น้ำเงิน) + เลเวล + EXP ของเรา (PC: ซ้ายล่าง / มือถือ: ซ้ายบน) อ่านจาก attribute `EnergyShield` / `MaxEnergyShield`, `Mana` / `MaxMana`, แถบเลือดเล็กบนหัวศัตรูทุกตัวใน `Workspace.Enemies`, แถบเลือดบอสใหญ่ด้านบนเมื่ออยู่ใกล้บอส, ข้อความจาก `NotifyRemote`, หน้าจอ "YOU DIED" พร้อมนับถอยหลังเกิดใหม่ ("Respawning in Xs") และปิดแถบเลือดเดิมของ Roblox
    * **จุดที่ปรับแก้บ่อย:** `BOSS_BAR_RANGE` (ระยะที่แถบบอสขึ้น), `NOTIFY_DURATION`, `MAX_NOTIFICATIONS`
 
 4. **`InventoryClient` (`LocalScript`)**
-   * **หน้าที่:** หน้าต่างกระเป๋า (กด **B** หรือปุ่ม "Inventory") ซ้าย = ช่องสวมใส่อุปกรณ์ 9 ช่อง (`Helmet`, `Amulet`, `MainHand`, `OffHand`, `Cloth`, `Ring1`, `Ring2`, `Special1`, `Special2`) + สเตตัส, กลาง = ช่องของ, ขวา = รายละเอียดไอเทมที่เลือก + ปุ่ม `Equip` / `Unequip` / `Discard` (ทิ้งต้องกด 2 ครั้ง)
+   * **หน้าที่:** หน้าต่างกระเป๋า (กด **B** หรือปุ่ม "Inventory") ซ้าย = ช่องสวมใส่อุปกรณ์ 9 ช่อง (`Helmet`, `Amulet`, `MainHand`, `OffHand`, `Cloth`, `Ring1`, `Ring2`, `Special1`, `Special2`) + สเตตัส (เลเวล, เลือด, มานา, ดาเมจ, ความเร็วโจมตี, ES, ความเร็วชาร์จ ES), กลาง = ช่องของ, ขวา = รายละเอียดไอเทมที่เลือก + ปุ่ม `Equip` / `Unequip` / `Discard` (ทิ้งต้องกด 2 ครั้ง)
    * แค่ **แสดงผล** ข้อมูลล่าสุดที่ Server ส่งมา (`"Sync"`) และส่งคำขอไปให้ Server ตัดสิน
    * **จุดที่ปรับแก้บ่อย:** `TOGGLE_KEY`, `GRID_COLUMNS`, `CELL_SIZE`, `SLOT_LAYOUT`
 
@@ -152,14 +161,17 @@
    | | Server → ทุก Client | `("EnemyAlert", enemyModel, duration)` ศัตรูเพิ่งเห็นผู้เล่น ("!" บนหัว) |
    | `DodgeRemote` | Client → Server | `(direction)` กลิ้งหลบ → Server เช็คคูลดาวน์แล้วเปิดช่วงอมตะ |
    | | Server → ทุก Client | `(character)` ให้คนอื่นเล่นท่ากลิ้ง |
+   | `FlaskRemote` | Client → Server | `(kind)` ดื่มขวด `"Life"` / `"Mana"` → Server เช็คยังไม่เต็ม + ขวดนั้นไม่ได้ฟื้นอยู่ + หักจำนวน แล้วค่อยๆ ฟื้น (รับใน `PlayerResources`) |
+   | | Server → ทุก Client | `(character, kind)` ให้คนอื่นเห็นประกาย |
    | `InventoryRemote` | Client → Server | `("RequestSync")`, `("Equip", itemId)`, `("Unequip", slot)`, `("Discard", itemId)` |
    | | Server → Client | `("Sync", { Inventory, Equipped, Capacity })` ข้อมูลกระเป๋าทั้งหมด |
    | `NotifyRemote` | Server → Client | `(text, color?)` ข้อความกลางจอ |
-   | `TeleportRemote` | Client → Server | `("Lobby")` ขอวาร์ปกลับโซนปลอดภัย (Lobby) และฟื้นฟูเลือดเต็ม (รับใน `EnemyService`) |
+   | `TeleportRemote` | Client → Server | `("Lobby")` ขอวาร์ปกลับโซนปลอดภัย (Lobby) และฟื้นฟูเลือด + มานา + ES + ขวดยาเต็ม (รับใน `EnemyService`) |
 
 2. **`Modules > SkillData`** — ค่าสกิลทั้งหมด
    * ดาเมจจริง = สุ่ม `MinDamage`–`MaxDamage` + สเตตัส `FlatDamage` ของผู้เล่น, คูณ `CritMultiplier` ถ้าติดคริ (`CritChance`)
    * คูลดาวน์จริง = `Cooldown / (1 + AttackSpeed% / 100)` (ฟัน `0.55` วิ, หมุนฟัน `3` วิ)
+   * `ManaCost` = มานาที่ใช้ต่อครั้ง (ฟัน `0` ฟรีเสมอ มานาหมดก็ยังตีได้, หมุนฟัน `15`)
    * `Shape = "Box"` ใช้ `HitboxSize` + `HitboxForwardOffset` (กล่องหน้าตัว), `Shape = "Radius"` ใช้ `Radius` (วงรอบตัว)
 
 3. **`Modules > EnemyData`** — ศัตรูแต่ละชนิด (key = ชื่อที่ใช้ตั้งจุดเกิด)
@@ -171,7 +183,7 @@
 4. **`Modules > ItemData`** — ไอเทมและช่องสวมใส่
    * `Slots`: รองรับช่องสวมใส่ทั้งหมด 9 ช่อง (`Helmet`, `Amulet`, `MainHand`, `OffHand`, `Cloth`, `Ring1`, `Ring2`, `Special1`, `Special2`) โดยไอเทมประเภท `Ring` จะเลือกใส่ช่อง `Ring1`/`Ring2` ที่ว่างอัตโนมัติ และ `Special` จะเลือกใส่ `Special1`/`Special2` ที่ว่างอัตโนมัติ
    * `Bases`: ของที่ดรอปได้ (`IronSword` "Iron Sword" → ช่อง `MainHand` ตั้ง `AllowOffHand = false`, `LeatherVest` "Leather Vest" → ช่อง `Cloth`) พร้อม `Implicit` = สเตตัสติดตัวของทุกชิ้น โดยอาวุธ `MainHand` กำหนด `AllowOffHand = true` (ใส่ออฟแฮนด์คู่กันได้) หรือ `AllowOffHand = false` (ถือเดี่ยว ล็อกช่อง `OffHand` และถอดออฟแฮนด์เดิมเก็บเข้ากระเป๋าอัตโนมัติ)
-   * `Affixes`: ออปชันสุ่ม `FlatDamage` (+ดาเมจ, Prefix), `MaxHealth` (+เลือด, Prefix), `AttackSpeed` (+% ความเร็วโจมตี, Suffix) แต่ละอันมีช่วงค่า `Min`–`Max`
+   * `Affixes`: ออปชันสุ่ม `FlatDamage` (+ดาเมจ, Prefix), `MaxHealth` (+เลือด, Prefix), `EnergyShield` (+ES สูงสุด 10–35, Prefix), `AttackSpeed` (+% ความเร็วโจมตี, Suffix), `EnergyShieldRecharge` (+% ความเร็วชาร์จ ES 10–40%, Suffix) แต่ละอันมีช่วงค่า `Min`–`Max` (ยังไม่จำกัดช่อง: ทุก affix ขึ้นได้ทุกไอเทม)
    * `Rarities`: Normal (0 affix, ขาว), Magic (1-2, ฟ้า, Prefix ≤1 Suffix ≤1), Rare (3, เหลือง)
    * ไอเทม 1 ชิ้นเป็นข้อมูลล้วน `{ Id, Base, Rarity, Affixes = { { Id, Value } } }` จึงเซฟลง DataStore และส่งผ่าน Remote ได้ตรงๆ
    * **เพิ่มไอเทม/affix ใหม่:** เพิ่มแถวใน `Bases` (กำหนด `Slot` เป็น `"MainHand"`, `"OffHand"`, `"Cloth"`, `"Helmet"`, `"Amulet"`, `"Ring"`, หรือ `"Special"`) / `Affixes` (ถ้าเป็นสเตตัสใหม่ต้องเพิ่มใน `StatText`, `PlayerStats` และโค้ดที่ใช้สเตตัสนั้นด้วย)
@@ -179,10 +191,14 @@
 5. **`Modules > PlayerStats`** — สเตตัสผู้เล่น
    * `BASE_MAX_HEALTH` (100), `MAX_HEALTH_PER_LEVEL` (+12/เลเวล), `DAMAGE_PER_LEVEL` (+2/เลเวล), `MAX_LEVEL` (30)
    * กลิ้งหลบ: `DODGE_COOLDOWN` (1 วิ, ความเร็วโจมตีไม่มีผล), `DODGE_DURATION` (0.35 วิ), `DODGE_DISTANCE` (13 studs), `DODGE_INVULNERABLE_TIME` (0.4 วิ นับจากตอน Server ได้รับ)
+   * มานา: `BASE_MAX_MANA` (50), `MAX_MANA_PER_LEVEL` (+4/เลเวล), `MANA_REGEN_PERCENT` (ฟื้น 4% ของมานาสูงสุดต่อวิ ตลอดเวลา)
+   * Energy Shield: ได้จากไอเทมเท่านั้น (เริ่มที่ 0), `ENERGY_SHIELD_RECHARGE_DELAY` (ไม่โดนตี 3 วิ ถึงเริ่มชาร์จ), `ENERGY_SHIELD_RECHARGE_PERCENT` (ชาร์จ 25% ของ ES สูงสุดต่อวิ × (1 + `EnergyShieldRecharge`%))
+   * ขวดยา `FLASKS`: `Life` (3 ครั้ง, ฟื้น 40% ของเลือดสูงสุด) / `Mana` (3 ครั้ง, ฟื้น 50% ของมานาสูงสุด) ค่อยๆ ฟื้นใน `Duration` 1.5 วิ และดื่มขวดเดิมซ้ำไม่ได้จนกว่าจะจบ, `FLASK_CHARGE_PER_KILL` (+0.25 ครั้งต่อศัตรู 1 ตัวทุกขวด = ฆ่า 4 ตัวได้คืน 1 ครั้ง), `FLASK_CHARGE_PER_BOSS_KILL` (+1)
+   * สเตตัสใน `compute`: `MaxHealth`, `MaxMana`, `MaxEnergyShield`, `EnergyShieldRecharge`, `FlatDamage`, `AttackSpeed` (affix สเตตัสใหม่ต้องเพิ่มค่าเริ่มต้นที่นี่)
    * `expToNext(level)` = EXP ที่ต้องใช้ขึ้นเลเวลถัดไป (`60 + level × 40`)
    * `compute(level, equipped)` = สเตตัสสุดท้าย, `getCooldown(...)` = คูลดาวน์หลังคิดความเร็วโจมตี (Client และ Server ใช้สูตรเดียวกัน)
 
-6. **`Modules > Ui`** — สี (`Ui.Colors`), ฟอนต์, ตัวช่วยสร้าง UI (`Ui.new`, `Ui.text`, `Ui.button`) และ `Ui.isTouchOnly()` (เช็คว่าเป็นมือถือ)
+6. **`Modules > Ui`** — สี (`Ui.Colors` รวมสีเลือด / มานา / ES / EXP), ฟอนต์, ตัวช่วยสร้าง UI (`Ui.new`, `Ui.text`, `Ui.button`) และ `Ui.isTouchOnly()` (เช็คว่าเป็นมือถือ)
 
 ---
 
@@ -192,7 +208,7 @@
 `Script` ใน ServerScriptService เป็นแค่ตัวเริ่ม ระบบจริงอยู่ใน ModuleScript ที่ `ServerStorage > Modules` เพื่อให้หลายสคริปต์เรียกใช้กันได้ (เช่น CombatServer เรียก `EnemyService.applyDamage`)
 
 1. **`CombatServer` (`Script`)**
-   * **Anti-Exploit Check:** ตรวจชนิดข้อมูลที่ส่งมา, ตัวละครยังมีชีวิต, คูลดาวน์จริงแยกตามสกิล (`playerCooldowns`, หักความเร็วโจมตีจาก `PlayerData.getStats`)
+   * **Anti-Exploit Check:** ตรวจชนิดข้อมูลที่ส่งมา, ตัวละครยังมีชีวิต, คูลดาวน์จริงแยกตามสกิล (`playerCooldowns`, หักความเร็วโจมตีจาก `PlayerData.getStats`) → คูลดาวน์พร้อมแล้วค่อยหักมานา `PlayerResources.spendMana(ManaCost)` (ไม่พอ = สกิลไม่ออกและไม่เริ่มคูลดาวน์)
    * **Server Hitbox:** `GetPartBoundsInBox` (ฟัน) หรือ `GetPartBoundsInRadius` (หมุนฟัน) หา Model ที่มี Humanoid **ข้ามตัวละครผู้เล่น** (เล่นด้วยกัน ไม่ตีกันเอง)
    * **Damage:** สุ่มดาเมจ + `FlatDamage` → ศัตรูของ `EnemyService` ส่งต่อให้ `EnemyService.applyDamage` (จัดการตาย/EXP/ดรอปเอง), ตัวอื่น (TrainingDummy) ใช้ `TakeDamage` ตรงๆ
    * **กลิ้งหลบ (`DodgeRemote`):** ตรวจทิศ (Vector3, กัน NaN), ตัวละครยังมีชีวิต, คูลดาวน์จริง (`playerDodgeTimes`) → ตั้ง attribute `InvulnerableUntil` บนตัวละคร (= `os.clock()` ของ Server + `DODGE_INVULNERABLE_TIME`) → `FireAllClients(character)` ให้คนอื่นเห็นท่า ตัวละครเคลื่อนที่ฝั่ง Client เอง (Client เป็นเจ้าของ physics ของตัวเองอยู่แล้ว)
@@ -201,15 +217,28 @@
 
 3. **`PlayerDataServer` (`Script`)** → `PlayerData.start()`
 
+3.1 **`PlayerResourcesServer` (`Script`)** → `PlayerResources.start()`
+
 4. **`ServerStorage > Modules > EnemyService`**
    * **จุดเกิด:** อ่าน Part ใน `Workspace.EnemySpawns` ถ้าไม่มีโฟลเดอร์นี้จะวางด่านเริ่มต้นให้เอง
    * **ตัวศัตรู:** สร้างหุ่น Blockout จากโค้ด (`BODY_PARTS`: ตัว หัว ตา เชื่อม WeldConstraint กับ HumanoidRootPart, แขนขาต่อด้วย Motor6D ที่หมุนจากหัวไหล่/สะโพก ให้ `EnemyVisualsClient` แกว่งเป็นท่าเดิน) + Highlight เส้นขอบการ์ตูน
    * **AI (ทุก `AI_TICK` = 0.15 วิ):** หาผู้เล่นใกล้สุดใน `AggroRange` **ที่มองเห็นจริง** (ยิง Raycast จากระดับตา `EYE_HEIGHT` ไม่เห็นทะลุกำแพง) → **เห็นครั้งแรก = ยืนนิ่งหันหน้าหา `ALERT_TIME` (0.6 วิ) พร้อมส่ง `EnemyAlert` ให้ขึ้น "!"** → เดินเข้าหา → ถึง `Attack.Range` และคูลดาวน์พร้อม → หยุด หันหน้า ส่ง `EnemyAttack` ให้ Client เตือน → รอ `Windup` → Melee: ตีโดนถ้าเป้ายังอยู่ใน `Range + 1.5`, Slam: โดนทุกคนในวง `Radius` (มี ForceField ตอนเกิด หรือกำลังกลิ้งหลบ = `InvulnerableUntil` ยังไม่หมด → ไม่โดน)
    * โดนตีก่อนเห็นเรา = ไล่ทันทีไม่มีช่วง "!" (ผู้เล่นเห็นมันอยู่แล้ว)
+   * ดาเมจที่ลงผู้เล่นผ่าน `PlayerResources.takeDamage` (ES รับก่อน เหลือค่อยหักเลือด) ส่วนเลขดาเมจที่เด้งเป็นดาเมจเต็มก่อนหัก ES
    * **การเดิน (`moveToward`):** กวาดกล่องขนาดตัวศัตรู (`Blockcast`) ไปทางเป้า ถ้าโล่ง = เดินตรง ถ้ามีกำแพงขวาง = ขอเส้นทางจาก `PathfindingService` (ขนาดตัวตาม `Scale`, กระโดดไม่ได้) แล้วเดินตาม waypoint คำนวณใหม่เมื่อเป้าขยับเกิน `PATH_GOAL_TOLERANCE` (ไม่ถี่กว่าทุก `PATH_REFRESH_TIME` = 1 วิ) หาทางไม่ได้ = เดินตรงไปเหมือนเดิม ใช้ทั้งตอนไล่และตอนเดินกลับบ้าน
    * โดนตีจากนอกระยะ = หันมาไล่คนตีทันที, ถูกล่อเกิน `LeashRange` = เดินกลับบ้าน เลือดเต็ม
    * **เลือดตามจำนวนผู้เล่น:** `MaxHealth × (1 + HEALTH_PER_EXTRA_PLAYER × (ผู้เล่น − 1))` (+50% ต่อคนที่เพิ่ม) ปรับทุกตัวทันทีตอนมีคนเข้า/ออก โดยคง % เลือดเดิม (EXP และของดรอปไม่เปลี่ยน)
-   * **ตาย & รีเซ็ตด่าน (`resetDungeon`) & วาร์ปกลับ Lobby:** EXP ให้ทุกคนที่เคยตีโดน → `Loot.rollDrops` → บอสตายประกาศ "Dungeon Cleared!" ทุกคน → ศพจางหาย 1 วิ (ตายแล้วตายเลย ไม่เกิดใหม่ตามเวลา) เมื่อผู้เล่นกดเข้าประตูวาร์ป `LobbyDungeonPortal` ใน Lobby ระบบจะเรียก `EnemyService.resetDungeon()` เพื่อล้างและเสกมอนสเตอร์ทั้งด่านขึ้นมาใหม่ทั้งหมด พร้อมวาร์ปผู้เล่นไปยังจุดเริ่มด่าน (`DungeonEntranceSpawn`) โดยสั่งโหลดพื้นที่รอบจุดนั้นบน Client ก่อนวาร์ป (`RequestStreamAroundAsync` รอไม่เกิน `PORTAL_STREAM_TIMEOUT` = 3 วิ กันศัตรูหน้าประตูโผล่มากลางทาง) ส่วนการกลับ Lobby ทำได้ทั้งผ่านประตู `DungeonReturnPortal` ท้ายห้องบอส หรือกดปุ่มวาร์ปในหน้าต่างตั้งค่า (`TeleportRemote`)
+   * **ตาย & รีเซ็ตด่าน (`resetDungeon`) & วาร์ปกลับ Lobby:** EXP + ขวดยาทุกขวด (`PlayerResources.addFlaskCharges`: `FLASK_CHARGE_PER_KILL`, บอส `FLASK_CHARGE_PER_BOSS_KILL`) ให้ทุกคนที่เคยตีโดน → `Loot.rollDrops` → บอสตายประกาศ "Dungeon Cleared!" ทุกคน → ศพจางหาย 1 วิ (ตายแล้วตายเลย ไม่เกิดใหม่ตามเวลา) เมื่อผู้เล่นกดเข้าประตูวาร์ป `LobbyDungeonPortal` ใน Lobby ระบบจะเรียก `EnemyService.resetDungeon()` เพื่อล้างและเสกมอนสเตอร์ทั้งด่านขึ้นมาใหม่ทั้งหมด พร้อมวาร์ปผู้เล่นไปยังจุดเริ่มด่าน (`DungeonEntranceSpawn`) โดยสั่งโหลดพื้นที่รอบจุดนั้นบน Client ก่อนวาร์ป (`RequestStreamAroundAsync` รอไม่เกิน `PORTAL_STREAM_TIMEOUT` = 3 วิ กันศัตรูหน้าประตูโผล่มากลางทาง) ส่วนการกลับ Lobby ทำได้ทั้งผ่านประตู `DungeonReturnPortal` ท้ายห้องบอส หรือกดปุ่มวาร์ปในหน้าต่างตั้งค่า (`TeleportRemote`) ทั้ง 3 ทาง (เข้าด่าน / กลับทางประตู / กลับทางปุ่ม) = เลือดเต็ม + มานา, ES, ขวดยาเต็ม (`PlayerResources.restoreAll`)
+
+4.1 **`ServerStorage > Modules > PlayerResources`** (มานา, Energy Shield, ขวดยา — ค่าจริงอยู่ใน memory ของ Server, ไม่เซฟ)
+   * **ค่าปัจจุบันอยู่ที่นี่, ค่าสูงสุดมาจาก `PlayerData.getStats`** (`MaxMana`, `MaxEnergyShield`, `EnergyShieldRecharge`) Client เห็นแค่สำเนาใน attribute (`Mana` / `EnergyShield` ปัดลงเป็นจำนวนเต็ม จะได้ส่งเฉพาะตอนเปลี่ยนทีละแต้ม)
+   * **ทุก `TICK` (0.1 วิ):** มานาฟื้น `MANA_REGEN_PERCENT`, ES ชาร์จถ้าไม่โดนตีมา `ENERGY_SHIELD_RECHARGE_DELAY` วิ, ขวดที่กำลังฟื้นให้เลือด/มานาทีละนิด, ลดค่าลงถ้าค่าสูงสุดลด (ถอดของ) ตัวละครตาย = หยุดทุกอย่างจนเกิดใหม่
+   * `restoreAll(player)`: มานา, ES, ขวดยาเต็ม + ยกเลิกขวดที่ฟื้นค้าง (ตอนเข้าเกม, ทุกครั้งที่เกิด, ผ่านประตูวาร์ป/ปุ่มกลับ Lobby)
+   * `spendMana(player, amount)`: หักมานา (ไม่พอ = คืน false ไม่หัก) ใช้ใน CombatServer
+   * `takeDamage(player, humanoid, amount)`: ES รับก่อน ที่เหลือ `TakeDamage` ทุกครั้งที่โดนตีนับเวลารอชาร์จ ES ใหม่ ใช้ใน EnemyService
+   * `addFlaskCharges(player, amount)`: เพิ่มทุกขวด (ไม่เกิน `MaxCharges`, ปัดทศนิยม 2 ตำแหน่ง) ใช้ตอนศัตรูตาย
+   * **ดื่มขวด (`FlaskRemote`):** ชนิดขวดถูกต้อง, ตัวละครยังมีชีวิต, ยังไม่เต็ม (เต็มแล้วไม่ให้ดื่ม กันกดพลาดเสียของ), ขวดนั้นไม่ได้ฟื้นอยู่ (`FlaskTimes`), เหลือ ≥ 1 → หัก 1 → ฟื้นรวม `RecoverPercent` ของเลือด/มานาสูงสุดใน `Duration` วิ → `FireAllClients(character, kind)`
+   * **จุดที่ปรับแก้บ่อย:** ตัวเลขทั้งหมดอยู่ใน `PlayerStats` (มานา, ES, `FLASKS`), ที่นี่มีแค่ `TICK`
 
 5. **`ServerStorage > Modules > Loot`**
    * `rollItem(rarity)`: สุ่มฐานไอเทม → จำนวน affix ตามความหายาก → สับ affix แล้วหยิบตามโควตา Prefix/Suffix → สุ่มค่าในช่วง `Min`–`Max`
@@ -233,6 +262,9 @@
 |---|---|---|
 | `Level`, `Exp`, `ExpToNext` | เลเวลและ EXP | HudClient, InventoryClient |
 | `MaxHealth`, `FlatDamage`, `AttackSpeed` | สเตตัสสุดท้าย | InventoryClient, CombatClient (คูลดาวน์) |
+| `MaxMana`, `MaxEnergyShield`, `EnergyShieldRecharge` | สเตตัสสุดท้าย (PlayerData ตั้ง) | HudClient, InventoryClient, CombatClient (เช็คขวดมานาเต็ม) |
+| `Mana`, `EnergyShield` | ค่าปัจจุบัน ปัดลงเป็นจำนวนเต็ม (PlayerResources ตั้ง) | HudClient, CombatClient (เช็คมานาก่อนใช้สกิล) |
+| `LifeFlaskCharges`, `ManaFlaskCharges` | ขวดยาที่เหลือ (PlayerResources ตั้ง, มีเศษได้ เช่น `1.75` = ดื่มได้ 1 ครั้ง + เกือบได้อีกครั้ง) | CombatClient (ช่อง Life / Mana) |
 | `DataStatus` | `Loading` / `Loaded` / `Failed` / `NoAccess` (Studio ไม่มีสิทธิ์ DataStore) | (ไว้เช็คตอน debug) |
 
 #### Attribute บนตัวละครผู้เล่น
@@ -286,11 +318,11 @@ sequenceDiagram
     participant E as EnemyService
 
     C->>C: 1. หันหน้าตามเมาส์ (PC) / เล็งศัตรูใกล้สุด (มือถือ)
-    C->>C: 2. กดสกิล -> เช็ค Cooldown เบื้องต้น
+    C->>C: 2. กดสกิล -> เช็ค Cooldown + มานาเบื้องต้น
     C->>C: 3. เล่นท่า + VFX ทันที (คลื่นดาบ / วงหมุน)
     C->>R: 4. FireServer(skillId, aimPoint)
     R->>S: 5. ส่งคำขอไปที่ Server
-    S->>S: 6. เช็ค Cooldown จริง (หักความเร็วโจมตี)
+    S->>S: 6. เช็ค Cooldown จริง (หักความเร็วโจมตี) แล้วหักมานา (PlayerResources)
     S->>R: 7. FireAllClients("ReplicateSkill", ...) ให้คนอื่นเห็น
     S->>S: 8. Hitbox (กล่อง / วงกลม) หาศัตรู ข้ามผู้เล่น
     S->>E: 9. applyDamage(enemy, damage, player)
@@ -315,13 +347,13 @@ sequenceDiagram
     E->>R: 3. FireAllClients("EnemyAttack", enemy, kind, center, radius, windup)
     R->>C: 4. แสดงคำเตือน (ขอบแดง / วงแดงบนพื้น)
     E->>E: 5. รอ Windup (ผู้เล่นเดินหนีหรือกลิ้งหลบได้)
-    E->>E: 6. เช็คว่ายังอยู่ในระยะ และไม่ได้อยู่ในช่วงอมตะของการกลิ้ง -> TakeDamage
+    E->>E: 6. เช็คว่ายังอยู่ในระยะ และไม่ได้อยู่ในช่วงอมตะของการกลิ้ง -> ES รับก่อน เหลือค่อยหักเลือด (PlayerResources.takeDamage)
     E->>R: 7. FireAllClients("DamageDealt", character, damage)
 ```
 
 ### 4.3 ฆ่าศัตรู → EXP → ดรอป → เก็บของ → เซฟ
 
-1. `Humanoid.Died` ของศัตรู → `EnemyService` ให้ EXP ทุกคนที่ตีโดน (`PlayerData.addExp` → อาจเลเวลอัป)
+1. `Humanoid.Died` ของศัตรู → `EnemyService` ให้ EXP + ขวดยาทุกคนที่ตีโดน (`PlayerData.addExp` → อาจเลเวลอัป, `PlayerResources.addFlaskCharges`)
 2. `Loot.rollDrops(EnemyData.Drops)` → สุ่มไอเทมบน Server → วางก้อนของบนพื้น
 3. ผู้เล่นกด **E** / แตะ "Pick Up" → `PlayerData.addItem` → `InventoryRemote "Sync"` + ข้อความ "Obtained ..."
 4. เปิดกระเป๋า → กดสวมใส่ → `InventoryRemote ("Equip", id)` → Server สลับของ → คำนวณสเตตัสใหม่ → ตั้ง attribute + MaxHealth → `Sync`
@@ -341,7 +373,11 @@ sequenceDiagram
   | บอส 2 คน (2250 HP) | ~10-15 วิ |
   | Stone Grunt 3 ตัวรุมเรา (เลือด 100) | ตายใน ~7 วิ ถ้ายืนเฉยๆ |
   | Stone Grunt 10 ตัวรุมพร้อมกัน (กลุ่มในด่านตอนนี้) | ตายใน ~2 วิ ถ้ายืนเฉยๆ |
+  | ขวดยาเลือดเต็ม 3 ครั้ง (เลเวล 1, ยังไม่ได้ playtest) | ฮีลรวม 120 HP ≈ โดน Stone Grunt ตี 12 ครั้ง หรือบอสทุบ 4 ครั้ง, ฆ่า Grunt กลุ่มละ 10 ตัว = ได้คืน 2.5 ครั้ง |
+  | มานาเลเวล 1 (50, ฟื้น 2/วิ, ยังไม่ได้ playtest) | หมุนฟันติดกันได้ ~4 ครั้ง (ทุก 3 วิ) แล้วเหลือ ~1 ครั้งทุก 7.5 วิ, ขวดมานา 1 ครั้ง = +25 มานา ≈ หมุนฟันเพิ่ม 2 ครั้ง |
+  | ES จาก affix (10–35 ต่อชิ้น, ยังไม่ได้ playtest) | Rare 2 ชิ้นที่ได้ ES สูงสุด ≈ 70 ES ≈ รับ Grunt ได้อีก 7 ครั้งก่อนเลือดลด, ชาร์จเต็มใน 4 วิ หลังไม่โดนตี 3 วิ |
 
 * **เข้าประตูวาร์ปจาก Lobby = รีเซ็ตทั้งด่าน** แม้มีเพื่อนกำลังเล่นอยู่ในด่าน ศัตรูที่เพื่อนกำลังสู้จะหายแล้วเกิดใหม่หมด
 * ศัตรูยังไม่มีท่าง้างตอนโจมตี (มีแค่ท่าเดิน + ขอบแดง/วงแดงเตือน) และ pathfinding ไม่กระโดด
-* **ช่วงอมตะของการกลิ้งเริ่มตอน Server ได้รับ** ไม่ใช่ตอนกดปุ่ม ถ้าการโจมตีลงในช่วงที่คำสั่งกลิ้งยังเดินทางไปไม่ถึง Server (~ครึ่งหนึ่งของ ping) จะยังโดน* ศัตรูที่ไกลกว่า Highlight อันที่ 27 จะไม่มีเส้นขอบ (ตั้งใจ เพื่อไม่ให้เกินขีดจำกัด 31 ของ Roblox)
+* **ช่วงอมตะของการกลิ้งเริ่มตอน Server ได้รับ** ไม่ใช่ตอนกดปุ่ม ถ้าการโจมตีลงในช่วงที่คำสั่งกลิ้งยังเดินทางไปไม่ถึง Server (~ครึ่งหนึ่งของ ping) จะยังโดน
+* ศัตรูที่ไกลกว่า Highlight อันที่ 27 จะไม่มีเส้นขอบ (ตั้งใจ เพื่อไม่ให้เกินขีดจำกัด 31 ของ Roblox)
