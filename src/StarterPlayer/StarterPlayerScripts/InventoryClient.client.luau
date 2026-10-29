@@ -313,14 +313,21 @@ local function renderGrid()
 end
 
 local function renderEquipped()
+	local offHandLocked = not ItemData.allowsOffHand(equipped.MainHand)
 	for slot, button in pairs(slotButtons) do
 		local item = equipped[slot]
 		local slotName = ItemData.SlotNames[slot] or slot
-		button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName
-		button.TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim
-		button.BackgroundColor3 = if item and item.Id == selectedId
-			then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
-			else Ui.Colors.PanelLight
+		if slot == "OffHand" and offHandLocked and not item then
+			button.Text = slotName .. "\n[Locked]"
+			button.TextColor3 = Color3.fromRGB(190, 95, 95)
+			button.BackgroundColor3 = Color3.fromRGB(35, 24, 28)
+		else
+			button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName
+			button.TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim
+			button.BackgroundColor3 = if item and item.Id == selectedId
+				then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
+				else Ui.Colors.PanelLight
+		end
 	end
 end
 
@@ -350,10 +357,14 @@ local function renderDetails()
 	local rarity = ItemData.Rarities[item.Rarity]
 	detailName.Text = ItemData.getName(item)
 	detailName.TextColor3 = getRarityColor(item)
+	local slotLabel = if base then ItemData.SlotNames[base.Slot] or base.Slot else "?"
+	if base and (base.Slot == "MainHand" or base.Slot == "Weapon") then
+		slotLabel ..= if base.AllowOffHand == false then " (ล็อก Off Hand)" else " (ใส่ Off Hand ได้)"
+	end
 	detailInfo.Text = string.format(
 		"%s · %s",
 		if rarity then rarity.Name else item.Rarity,
-		if base then ItemData.SlotNames[base.Slot] or base.Slot else "?"
+		slotLabel
 	)
 
 	-- Implicit lines in grey, rolled affixes in the Magic blue
@@ -368,7 +379,20 @@ local function renderDetails()
 	detailLines.Text = table.concat(lines, "\n")
 
 	actionButton.Visible = true
-	actionButton.Text = if equippedSlot then "ถอด" else "สวมใส่"
+	local isBlockedOffHand = not equippedSlot
+		and base ~= nil
+		and base.Slot == "OffHand"
+		and not ItemData.allowsOffHand(equipped.MainHand)
+	if equippedSlot then
+		actionButton.Text = "ถอด"
+		actionButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
+	elseif isBlockedOffHand then
+		actionButton.Text = "อาวุธหลักล็อก Off Hand"
+		actionButton.BackgroundColor3 = Color3.fromRGB(85, 65, 65)
+	else
+		actionButton.Text = "สวมใส่"
+		actionButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
+	end
 	-- Equipped items must be taken off before they can be thrown away
 	discardButton.Visible = equippedSlot == nil
 	discardButton.Text = if confirmingDiscard then "กดอีกครั้งเพื่อยืนยัน" else "ทิ้ง"

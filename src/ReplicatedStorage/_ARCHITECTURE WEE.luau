@@ -49,6 +49,9 @@
        MainHand, OffHand, Cloth, Helmet, Amulet, Ring1, Ring2, Special1, Special2
      + รองรับการใส่ไอเทมประเภท Ring ลงช่อง Ring1/Ring2 ที่ว่างอัตโนมัติ และ Special ลงช่อง Special1/Special2 ที่ว่างอัตโนมัติ
      + รองรับการย้ายข้อมูลเซฟเก่า (Weapon -> MainHand, Armor -> Cloth) ไม่ให้ของเดิมหาย
+     + เพิ่มระบบจำกัดการถืออาวุธ (AllowOffHand ใน ItemData.Bases):
+       - อาวุธที่ตั้ง AllowOffHand = true สามารถใส่อุปกรณ์ช่อง OffHand คู่กันได้
+       - อาวุธที่ตั้ง AllowOffHand = false (ถือเดี่ยว ห้ามถือ OffHand หรือถือคู่) เมื่อสวมใส่จะล็อกช่อง OffHand (ขึ้น [Locked]) และถอด OffHand ที่ใส่อยู่เก็บเข้ากระเป๋าให้อัตโนมัติ
      + ปรับหน้าต่าง InventoryClient ฝั่งซ้ายให้จัดเรียงช่องสวมใส่เป็นกรอบสี่เหลี่ยมจัตุรัส (56x56) เรียง 3 คอลัมน์แนวตั้ง:
        คอลัมน์ 1 (Helmet, Cloth, MainHand, OffHand), คอลัมน์ 2 (Amulet, Ring1, Ring2), คอลัมน์ 3 (Special1, Special2) พร้อมแสดงสเตตัสด้านล่าง
    - MinimapClient / TeleportRemote / EnemyService:

@@ -19,6 +19,7 @@ export type Item = {
 type BaseInfo = {
 	Name: string,
 	Slot: string,
+	AllowOffHand: boolean?, -- For MainHand weapons: true = can equip OffHand, false = locks OffHand slot
 	Implicit: { [string]: number }, -- Stats every copy of this base always has
 }
 
@@ -121,11 +122,24 @@ function ItemData.getTargetSlot(baseSlot: string, equipped: { [string]: Item }):
 	return baseSlot
 end
 
+-- Returns false when a MainHand weapon explicitly forbids equipping an OffHand item (AllowOffHand == false)
+function ItemData.allowsOffHand(mainHandItem: Item?): boolean
+	if not mainHandItem then
+		return true
+	end
+	local base = ItemData.Bases[mainHandItem.Base]
+	if base and base.AllowOffHand == false then
+		return false
+	end
+	return true
+end
+
 -- Item bases that can drop
 ItemData.Bases = {
 	IronSword = {
 		Name = "ดาบเหล็ก",
 		Slot = "MainHand",
+		AllowOffHand = false, -- ถือมือเดียว ห้ามถือ OffHand หรือถือคู่ (เปลี่ยนเป็น true สำหรับอาวุธที่มี OffHand)
 		Implicit = { FlatDamage = 5 },
 	},
 	LeatherVest = {

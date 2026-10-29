@@ -161,7 +161,7 @@
 
 4. **`Modules > ItemData`** — ไอเทมและช่องสวมใส่
    * `Slots`: รองรับช่องสวมใส่ทั้งหมด 9 ช่อง (`Helmet`, `Amulet`, `MainHand`, `OffHand`, `Cloth`, `Ring1`, `Ring2`, `Special1`, `Special2`) โดยไอเทมประเภท `Ring` จะเลือกใส่ช่อง `Ring1`/`Ring2` ที่ว่างอัตโนมัติ และ `Special` จะเลือกใส่ `Special1`/`Special2` ที่ว่างอัตโนมัติ
-   * `Bases`: ของที่ดรอปได้ (`IronSword` ดาบเหล็ก → ช่อง `MainHand`, `LeatherVest` เสื้อเกราะหนัง → ช่อง `Cloth`) พร้อม `Implicit` = สเตตัสติดตัวของทุกชิ้น
+   * `Bases`: ของที่ดรอปได้ (`IronSword` ดาบเหล็ก → ช่อง `MainHand` ตั้ง `AllowOffHand = false`, `LeatherVest` เสื้อเกราะหนัง → ช่อง `Cloth`) พร้อม `Implicit` = สเตตัสติดตัวของทุกชิ้น โดยอาวุธ `MainHand` กำหนด `AllowOffHand = true` (ใส่ออฟแฮนด์คู่กันได้) หรือ `AllowOffHand = false` (ถือเดี่ยว ล็อกช่อง `OffHand` และถอดออฟแฮนด์เดิมเก็บเข้ากระเป๋าอัตโนมัติ)
    * `Affixes`: ออปชันสุ่ม `FlatDamage` (+ดาเมจ, Prefix), `MaxHealth` (+เลือด, Prefix), `AttackSpeed` (+% ความเร็วโจมตี, Suffix) แต่ละอันมีช่วงค่า `Min`–`Max`
    * `Rarities`: ธรรมดา (0 affix, ขาว), เวทมนตร์ (1-2, ฟ้า, Prefix ≤1 Suffix ≤1), หายาก (3, เหลือง)
    * ไอเทม 1 ชิ้นเป็นข้อมูลล้วน `{ Id, Base, Rarity, Affixes = { { Id, Value } } }` จึงเซฟลง DataStore และส่งผ่าน Remote ได้ตรงๆ

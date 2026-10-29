@@ -156,6 +156,14 @@ local function buildProfile(data: any, canSave: boolean): Profile
 				profile.Equipped[slot] = item
 			end
 		end
+
+		-- If MainHand forbids OffHand, move any equipped OffHand item back to Inventory
+		if profile.Equipped.OffHand and not ItemData.allowsOffHand(profile.Equipped.MainHand) then
+			if #profile.Inventory < INVENTORY_CAPACITY then
+				table.insert(profile.Inventory, profile.Equipped.OffHand)
+			end
+			profile.Equipped.OffHand = nil
+		end
 	end
 	return profile
 end
@@ -242,13 +250,29 @@ local function findInInventory(profile: Profile, itemId: string): number?
 	return nil
 end
 
-local function equip(profile: Profile, itemId: string)
+local function equip(player: Player, profile: Profile, itemId: string)
 	local index = findInInventory(profile, itemId)
 	if not index then
 		return
 	end
 	local item = profile.Inventory[index]
-	local slot = ItemData.getTargetSlot(ItemData.Bases[item.Base].Slot, profile.Equipped)
+	local base = ItemData.Bases[item.Base]
+	local slot = ItemData.getTargetSlot(base.Slot, profile.Equipped)
+
+	-- 1. Trying to equip an OffHand item while MainHand forbids OffHand
+	if slot == "OffHand" and not ItemData.allowsOffHand(profile.Equipped.MainHand) then
+		PlayerData.notify(player, "อาวุธหลักที่ถืออยู่ ห้ามใส่ออฟแฮนด์!", WARNING_COLOR)
+		return
+	end
+
+	-- 2. Trying to equip a MainHand weapon that forbids OffHand while an OffHand is currently equipped
+	if slot == "MainHand" and not ItemData.allowsOffHand(item) and profile.Equipped.OffHand then
+		-- If MainHand is also occupied, both old MainHand and old OffHand return to inventory (+1 net item in bag)
+		if profile.Equipped.MainHand and #profile.Inventory >= INVENTORY_CAPACITY then
+			PlayerData.notify(player, "กระเป๋าเต็ม! ถอด Off Hand อัตโนมัติไม่ได้", WARNING_COLOR)
+			return
+		end
+	end
 
 	-- Swap: the previously equipped item takes the new item's place in the inventory
 	local previous = profile.Equipped[slot]
@@ -258,6 +282,13 @@ local function equip(profile: Profile, itemId: string)
 		table.remove(profile.Inventory, index)
 	end
 	profile.Equipped[slot] = item
+
+	-- Auto-unequip OffHand if the newly equipped MainHand weapon forbids it
+	if slot == "MainHand" and not ItemData.allowsOffHand(item) and profile.Equipped.OffHand then
+		table.insert(profile.Inventory, profile.Equipped.OffHand)
+		profile.Equipped.OffHand = nil
+		PlayerData.notify(player, "ถอด Off Hand เก็บเข้ากระเป๋าอัตโนมัติ", INFO_COLOR)
+	end
 end
 
 local function unequip(player: Player, profile: Profile, slot: string)
@@ -287,7 +318,7 @@ local function onInventoryRequest(player: Player, action: any, arg: any)
 	end
 
 	if action == "Equip" and type(arg) == "string" then
-		equip(profile, arg)
+		equip(player, profile, arg)
 	elseif action == "Unequip" and type(arg) == "string" then
 		unequip(player, profile, arg)
 	elseif action == "Discard" and type(arg) == "string" then
