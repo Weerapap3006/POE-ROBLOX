@@ -3,6 +3,7 @@
 -- Path: ServerStorage.Modules.EnemyService
 -- ==========================================
 local Players = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -19,19 +20,30 @@ local AI_TICK = 0.15 -- Seconds between AI decisions
 local SPAWN_FOLDER_NAME = "EnemySpawns" -- Workspace folder of spawn marker parts (made in Studio)
 local MELEE_REACH_BONUS = 1.5 -- A melee hit still lands if the target is this much past Range after the windup
 local BOSS_CLEAR_COLOR = Color3.fromRGB(255, 215, 70)
+local HEALTH_PER_EXTRA_PLAYER = 0.5 -- Each player after the first adds +50% max health to every enemy
+local DROPS_FOLDER_NAME = "Drops" -- Loot's folder of items on the ground
+
+-- Pathfinding: enemies walk straight at their goal unless the map blocks the way, then follow a detour
+local PATH_AGENT_RADIUS = 2 -- Studs at Scale 1 (the body is ~4 studs arm to arm)
+local PATH_AGENT_HEIGHT = 5 -- Studs at Scale 1, feet to top of head
+local PATH_REFRESH_TIME = 1 -- Seconds before a detour can be recomputed
+local PATH_GOAL_TOLERANCE = 4 -- Recompute the detour when the goal moved this far from where it leads
+local WAYPOINT_REACHED = 3 -- Studs (flat) to count a detour waypoint as reached
+local STEP_HEIGHT = 0.5 -- Bumps lower than this don't count as blocking the way
 
 -- Blockout body at Scale 1. Offsets are from the HumanoidRootPart center, -Z is the front
+-- Joint = Motor6D name for limbs that EnemyVisualsClient swings while walking (the rest is welded)
 local ROOT_SIZE = Vector3.new(2, 2, 1)
 local HIP_HEIGHT = 1.5 -- Root center floats HIP_HEIGHT + ROOT_SIZE.Y / 2 above the ground, so the legs touch it
-local BODY_PARTS = {
+local BODY_PARTS: { { Name: string, Size: Vector3, Offset: Vector3, IsEye: boolean, Joint: string? } } = {
 	{ Name = "Body", Size = Vector3.new(2.4, 2.2, 1.6), Offset = Vector3.new(0, 0, 0), IsEye = false },
 	{ Name = "Head", Size = Vector3.new(1.8, 1.5, 1.5), Offset = Vector3.new(0, 1.85, -0.1), IsEye = false },
 	{ Name = "LeftEye", Size = Vector3.new(0.35, 0.3, 0.1), Offset = Vector3.new(-0.4, 1.95, -0.86), IsEye = true },
 	{ Name = "RightEye", Size = Vector3.new(0.35, 0.3, 0.1), Offset = Vector3.new(0.4, 1.95, -0.86), IsEye = true },
-	{ Name = "LeftArm", Size = Vector3.new(0.8, 2, 0.8), Offset = Vector3.new(-1.65, -0.2, 0), IsEye = false },
-	{ Name = "RightArm", Size = Vector3.new(0.8, 2, 0.8), Offset = Vector3.new(1.65, -0.2, 0), IsEye = false },
-	{ Name = "LeftLeg", Size = Vector3.new(0.9, 1.4, 0.9), Offset = Vector3.new(-0.6, -1.8, 0), IsEye = false },
-	{ Name = "RightLeg", Size = Vector3.new(0.9, 1.4, 0.9), Offset = Vector3.new(0.6, -1.8, 0), IsEye = false },
+	{ Name = "LeftArm", Size = Vector3.new(0.8, 2, 0.8), Offset = Vector3.new(-1.65, -0.2, 0), IsEye = false, Joint = "LeftShoulder" },
+	{ Name = "RightArm", Size = Vector3.new(0.8, 2, 0.8), Offset = Vector3.new(1.65, -0.2, 0), IsEye = false, Joint = "RightShoulder" },
+	{ Name = "LeftLeg", Size = Vector3.new(0.9, 1.4, 0.9), Offset = Vector3.new(-0.6, -1.8, 0), IsEye = false, Joint = "LeftHip" },
+	{ Name = "RightLeg", Size = Vector3.new(0.9, 1.4, 0.9), Offset = Vector3.new(0.6, -1.8, 0), IsEye = false, Joint = "RightHip" },
 }
 
 type SpawnPoint = {
@@ -51,12 +63,19 @@ type EnemyState = {
 	Dead: boolean,
 	NextAttackTime: number,
 	Contributors: { [Player]: boolean }, -- Everyone who hit it gets the EXP
+	Path: Path, -- PathfindingService path sized for this enemy's body
+	Waypoints: { PathWaypoint }?, -- Current detour around obstacles (nil = walking straight)
+	WaypointIndex: number,
+	PathGoal: Vector3?, -- Where the current detour leads
+	PathTime: number, -- When the last detour was requested
+	PathBusy: boolean, -- ComputeAsync yields, so it runs in its own thread
 }
 
 local EnemyService = {}
 
 local enemies: { [Model]: EnemyState } = {}
 local random = Random.new()
+local healthMultiplier = 1 -- From the player count, see rescaleEnemyHealth
 
 -- ==========================================
 -- 1. HELPERS
@@ -88,11 +107,14 @@ local function getAliveRoot(character: Model?): BasePart?
 	return root
 end
 
-local function findGround(position: Vector3): Vector3
+-- Raycast params that only hit the map (skips enemies, players, drops, spawn markers and non-collidable decor)
+local function makeMapParams(): RaycastParams
 	local ignore: { Instance } = { getEnemiesFolder() }
-	local spawnFolder = workspace:FindFirstChild(SPAWN_FOLDER_NAME)
-	if spawnFolder then
-		table.insert(ignore, spawnFolder)
+	for _, folderName in ipairs({ SPAWN_FOLDER_NAME, DROPS_FOLDER_NAME }) do
+		local folder = workspace:FindFirstChild(folderName)
+		if folder then
+			table.insert(ignore, folder)
+		end
 	end
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character then
@@ -103,8 +125,23 @@ local function findGround(position: Vector3): Vector3
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = ignore
-	local result = workspace:Raycast(position + Vector3.new(0, 10, 0), Vector3.new(0, -200, 0), params)
+	params.RespectCanCollide = true
+	return params
+end
+
+local function findGround(position: Vector3): Vector3
+	local result = workspace:Raycast(position + Vector3.new(0, 10, 0), Vector3.new(0, -200, 0), makeMapParams())
 	return if result then result.Position else position
+end
+
+local function countPlayers(leaving: Player?): number
+	local count = 0
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= leaving then
+			count += 1
+		end
+	end
+	return count
 end
 
 -- ==========================================
@@ -159,7 +196,7 @@ local function collectSpawnPoints(): { SpawnPoint }
 end
 
 -- ==========================================
--- 3. BUILD & SPAWN ENEMIES (blockout bodies, no animations)
+-- 3. BUILD & SPAWN ENEMIES (blockout bodies, limbs swung by EnemyVisualsClient)
 -- ==========================================
 local function buildModel(typeId: string, data: EnemyData.EnemyType): (Model, Humanoid, BasePart)
 	local scale = data.Scale
@@ -186,10 +223,22 @@ local function buildModel(typeId: string, data: EnemyData.EnemyType): (Model, Hu
 		part.Massless = true
 		part.Parent = model
 
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = root
-		weld.Part1 = part
-		weld.Parent = part
+		if info.Joint then
+			-- Limb pivots at its top end (shoulder / hip), so swinging Transform rotates it like a real joint
+			local pivot = Vector3.new(0, info.Size.Y / 2, 0) * scale
+			local joint = Instance.new("Motor6D")
+			joint.Name = info.Joint
+			joint.Part0 = root
+			joint.Part1 = part
+			joint.C0 = CFrame.new(info.Offset * scale + pivot)
+			joint.C1 = CFrame.new(pivot)
+			joint.Parent = part
+		else
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = root
+			weld.Part1 = part
+			weld.Parent = part
+		end
 	end
 
 	-- Cel-shade outline (CombatClient flashes it white on hit and red during attack windups)
@@ -203,8 +252,8 @@ local function buildModel(typeId: string, data: EnemyData.EnemyType): (Model, Hu
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RigType = Enum.HumanoidRigType.R15
 	humanoid.HipHeight = HIP_HEIGHT * scale
-	humanoid.MaxHealth = data.MaxHealth
-	humanoid.Health = data.MaxHealth
+	humanoid.MaxHealth = data.MaxHealth * healthMultiplier
+	humanoid.Health = humanoid.MaxHealth
 	humanoid.WalkSpeed = data.WalkSpeed
 	humanoid.BreakJointsOnDeath = false
 	humanoid.RequiresNeck = false
@@ -249,6 +298,16 @@ local function spawnEnemy(point: SpawnPoint)
 		Dead = false,
 		NextAttackTime = 0,
 		Contributors = {},
+		Path = PathfindingService:CreatePath({
+			AgentRadius = PATH_AGENT_RADIUS * data.Scale,
+			AgentHeight = PATH_AGENT_HEIGHT * data.Scale,
+			AgentCanJump = false, -- The AI never jumps, so detours avoid ledges that need a jump
+		}),
+		Waypoints = nil,
+		WaypointIndex = 1,
+		PathGoal = nil,
+		PathTime = -math.huge,
+		PathBusy = false,
 	}
 	enemies[model] = state
 
@@ -373,7 +432,68 @@ local function findTarget(state: EnemyState): Model?
 	return best
 end
 
-local function updateEnemy(state: EnemyState, now: number)
+-- Sweeps a box the size of the body toward the goal: true when nothing on the map is in the way
+local function isPathClear(state: EnemyState, goal: Vector3, mapParams: RaycastParams): boolean
+	local root = state.Root
+	local offset = Vector3.new(goal.X - root.Position.X, 0, goal.Z - root.Position.Z)
+	if offset.Magnitude < 1 then
+		return true
+	end
+	local scale = state.Data.Scale
+	local feetY = root.Position.Y - state.Humanoid.HipHeight - root.Size.Y / 2
+	local height = PATH_AGENT_HEIGHT * scale - STEP_HEIGHT
+	local center = Vector3.new(root.Position.X, feetY + STEP_HEIGHT + height / 2, root.Position.Z)
+	local size = Vector3.new(PATH_AGENT_RADIUS * scale * 1.5, height, 0.5)
+	return workspace:Blockcast(CFrame.lookAt(center, center + offset), size, offset, mapParams) == nil
+end
+
+local function requestPath(state: EnemyState, goal: Vector3, now: number)
+	state.PathBusy = true
+	state.PathTime = now
+	task.spawn(function()
+		local ok = pcall(function()
+			state.Path:ComputeAsync(state.Root.Position, goal)
+		end)
+		state.PathBusy = false
+		if ok and state.Path.Status == Enum.PathStatus.Success then
+			state.Waypoints = state.Path:GetWaypoints()
+			state.WaypointIndex = 2 -- Waypoint 1 is where the enemy already stands
+			state.PathGoal = goal
+		else
+			state.Waypoints = nil -- No way around: keeps walking straight (and retries after PATH_REFRESH_TIME)
+		end
+	end)
+end
+
+local function moveToward(state: EnemyState, goal: Vector3, now: number, mapParams: RaycastParams)
+	local humanoid = state.Humanoid
+	if isPathClear(state, goal, mapParams) then
+		state.Waypoints = nil
+		humanoid:MoveTo(goal)
+		return
+	end
+
+	local pathGoal = state.PathGoal
+	local isStale = not state.Waypoints or not pathGoal or flatDistance(pathGoal, goal) > PATH_GOAL_TOLERANCE
+	if isStale and not state.PathBusy and now - state.PathTime >= PATH_REFRESH_TIME then
+		requestPath(state, goal, now)
+	end
+
+	local waypoints = state.Waypoints
+	local waypoint = if waypoints then waypoints[state.WaypointIndex] else nil
+	while waypoints and waypoint and flatDistance(waypoint.Position, state.Root.Position) < WAYPOINT_REACHED do
+		state.WaypointIndex += 1
+		waypoint = waypoints[state.WaypointIndex]
+	end
+	if waypoint then
+		humanoid:MoveTo(waypoint.Position)
+	else
+		state.Waypoints = nil
+		humanoid:MoveTo(goal) -- Detour not ready yet (or finished): head straight for the goal
+	end
+end
+
+local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastParams)
 	if state.Dead or state.Attacking then
 		return
 	end
@@ -392,7 +512,7 @@ local function updateEnemy(state: EnemyState, now: number)
 	-- Walking home: ignore players, heal back to full on arrival
 	if state.Returning then
 		if homeDistance > 4 then
-			humanoid:MoveTo(state.Home)
+			moveToward(state, state.Home, now, mapParams)
 			return
 		end
 		state.Returning = false
@@ -404,7 +524,7 @@ local function updateEnemy(state: EnemyState, now: number)
 		state.Target = nil
 		state.Returning = true
 		state.Contributors = {}
-		humanoid:MoveTo(state.Home)
+		moveToward(state, state.Home, now, mapParams)
 		return
 	end
 
@@ -416,7 +536,7 @@ local function updateEnemy(state: EnemyState, now: number)
 	local target = state.Target
 	if not target or not targetRoot then
 		if homeDistance > 3 then
-			humanoid:MoveTo(state.Home)
+			moveToward(state, state.Home, now, mapParams)
 		end
 		return
 	end
@@ -428,7 +548,20 @@ local function updateEnemy(state: EnemyState, now: number)
 			humanoid:MoveTo(root.Position) -- In range but on cooldown: hold position
 		end
 	else
-		humanoid:MoveTo(targetRoot.Position)
+		moveToward(state, targetRoot.Position, now, mapParams)
+	end
+end
+
+-- Co-op scaling: players joined/left, so resize every living enemy's max health and keep its health %
+local function rescaleEnemyHealth(playerCount: number)
+	healthMultiplier = 1 + HEALTH_PER_EXTRA_PLAYER * math.max(playerCount - 1, 0)
+	for _, state in pairs(enemies) do
+		local humanoid = state.Humanoid
+		if not state.Dead and humanoid.Health > 0 then
+			local fraction = humanoid.Health / humanoid.MaxHealth
+			humanoid.MaxHealth = state.Data.MaxHealth * healthMultiplier
+			humanoid.Health = humanoid.MaxHealth * fraction
+		end
 	end
 end
 
@@ -455,6 +588,14 @@ function EnemyService.applyDamage(model: Model, amount: number, attacker: Player
 end
 
 function EnemyService.start()
+	rescaleEnemyHealth(countPlayers())
+	Players.PlayerAdded:Connect(function()
+		rescaleEnemyHealth(countPlayers())
+	end)
+	Players.PlayerRemoving:Connect(function(leaving)
+		rescaleEnemyHealth(countPlayers(leaving)) -- The leaving player is still in GetPlayers() here
+	end)
+
 	for _, point in ipairs(collectSpawnPoints()) do
 		spawnEnemy(point)
 	end
@@ -462,8 +603,9 @@ function EnemyService.start()
 	task.spawn(function()
 		while true do
 			local now = os.clock()
+			local mapParams = makeMapParams() -- Rebuilt every tick: player characters change on respawn
 			for _, state in pairs(enemies) do
-				local ok, err = pcall(updateEnemy, state, now)
+				local ok, err = pcall(updateEnemy, state, now, mapParams)
 				if not ok then
 					warn("[EnemyService] AI error:", err)
 				end

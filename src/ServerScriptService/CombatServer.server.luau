@@ -29,7 +29,7 @@ end)
 -- ==========================================
 -- HANDLE SKILL REQUEST FROM CLIENT
 -- ==========================================
-combatRemote.OnServerEvent:Connect(function(player: Player, skillId: unknown, targetPosition: unknown)
+combatRemote.OnServerEvent:Connect(function(player: Player, skillId: any, targetPosition: any)
 	-- 1. Validate arguments sent by Client (Never trust Client input types)
 	if type(skillId) ~= "string" or typeof(targetPosition) ~= "Vector3" then
 		return

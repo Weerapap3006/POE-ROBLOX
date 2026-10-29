@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local ItemData = require(modulesFolder:WaitForChild("ItemData"))
@@ -21,8 +22,10 @@ local DATASTORE_NAME = "PlayerData_v1" -- Renaming this starts every player from
 local INVENTORY_CAPACITY = 20
 local AUTOSAVE_INTERVAL = 120 -- Seconds
 local RETRY_COUNT = 3
+local STUDIO_ACCESS_HINT = "Studio: Game Settings -> Security -> Enable Studio Access to API Services (place must be published)"
 
 local WARNING_COLOR = Color3.fromRGB(255, 120, 90)
+local INFO_COLOR = Color3.fromRGB(150, 200, 255)
 local LEVEL_UP_COLOR = Color3.fromRGB(240, 190, 60)
 
 export type Profile = {
@@ -60,22 +63,36 @@ local function getKey(player: Player): string
 	return "Player_" .. player.UserId
 end
 
-local function loadData(player: Player): (boolean, any)
+-- Studio errors that retrying can't fix: the place isn't published or API access is turned off
+local function isStudioAccessError(message: string): boolean
+	if not RunService:IsStudio() then
+		return false
+	end
+	local lower = string.lower(message)
+	return string.find(lower, "studio", 1, true) ~= nil or string.find(lower, "publish", 1, true) ~= nil
+end
+
+-- Status: "Loaded", "Failed" (DataStore error) or "NoAccess" (Studio without DataStore access)
+local function loadData(player: Player): (string, any)
 	local store = dataStore
 	if not store then
-		return false, nil
+		return if RunService:IsStudio() then "NoAccess" else "Failed", nil
 	end
 	for attempt = 1, RETRY_COUNT do
 		local ok, result = pcall(function()
 			return store:GetAsync(getKey(player))
 		end)
 		if ok then
-			return true, result
+			return "Loaded", result
+		end
+		if isStudioAccessError(tostring(result)) then
+			warn("[PlayerData] No DataStore access, progress will not be saved.", STUDIO_ACCESS_HINT)
+			return "NoAccess", nil
 		end
 		warn(("[PlayerData] Load failed for %s (attempt %d): %s"):format(player.Name, attempt, tostring(result)))
 		task.wait(attempt)
 	end
-	return false, nil
+	return "Failed", nil
 end
 
 -- Saved data may come from an older version of the game: drop anything ItemData no longer knows
@@ -255,7 +272,7 @@ local function discard(profile: Profile, itemId: string)
 	end
 end
 
-local function onInventoryRequest(player: Player, action: unknown, arg: unknown)
+local function onInventoryRequest(player: Player, action: any, arg: any)
 	local profile = profiles[player]
 	if not profile then
 		return
@@ -349,18 +366,21 @@ local function onPlayerAdded(player: Player)
 		end
 	end)
 
-	local ok, data = loadData(player)
+	local status, data = loadData(player)
 	if not player.Parent then
 		return -- Left while loading
 	end
 
-	local profile = buildProfile(if ok then data else nil, ok)
+	local loaded = status == "Loaded"
+	local profile = buildProfile(if loaded then data else nil, loaded)
 	profiles[player] = profile
-	player:SetAttribute("DataStatus", if ok then "Loaded" else "Failed")
+	player:SetAttribute("DataStatus", status)
 	refreshStats(player, profile, true)
 	sync(player, profile)
 
-	if not ok then
+	if status == "NoAccess" then
+		PlayerData.notify(player, "เทสใน Studio: เล่นได้ปกติ แต่ไม่บันทึกความคืบหน้า", INFO_COLOR)
+	elseif status == "Failed" then
 		PlayerData.notify(player, "โหลดข้อมูลไม่สำเร็จ รอบนี้จะไม่บันทึกความคืบหน้า", WARNING_COLOR)
 	end
 end

@@ -244,6 +244,7 @@ local function trackEnemy(model: Instance)
 	end
 	update()
 	humanoid.HealthChanged:Connect(update)
+	humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(update) -- Rescaled when players join/leave
 end
 
 local enemiesFolder = workspace:WaitForChild("Enemies")

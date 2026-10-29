@@ -45,7 +45,8 @@
           ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมด้วยลูกกลิ้ง
           ├── CombatClient (LocalScript) : เล็ง, กดสกิล, แถบสกิล, VFX, เตือนท่าศัตรู, เลขดาเมจ
           ├── HudClient (LocalScript) : แถบเลือด/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
-          └── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด I)
+          ├── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด I)
+          └── EnemyVisualsClient (LocalScript) : ท่าเดินศัตรู + คุมจำนวน Highlight ไม่ให้เกิน 31
 
 ------------------------------------------------------------------------------
 2. อยากแก้ค่าอะไร ให้ไปที่ไฟล์ไหน? (QUICK EDIT GUIDE):
@@ -58,6 +59,8 @@
    - แก้สี UI ทั้งเกม                       --> ReplicatedStorage.Modules.Ui
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox    --> ServerScriptService.CombatServer
    - แก้ AI ศัตรู / รูปร่างศัตรู / ด่านเริ่มต้น  --> ServerStorage.Modules.EnemyService
+     (เลือดศัตรูเพิ่มตามจำนวนผู้เล่น: HEALTH_PER_EXTRA_PLAYER, หลบสิ่งกีดขวาง: PATH_*)
+   - แก้ท่าเดินศัตรู / จำนวนเส้นขอบที่โชว์     --> StarterPlayerScripts.EnemyVisualsClient
    - แก้ขนาดกระเป๋า / ระบบเซฟ                --> ServerStorage.Modules.PlayerData
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน     --> StarterPlayer.StarterCharacter (แก้ใน Studio)
 
@@ -75,7 +78,7 @@
    - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
        (PlayerData, EnemyService, Loot)
    - StarterPlayerScripts.*                       --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
-       (CameraScript, CombatClient, HudClient, InventoryClient)
+       (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient)
 
    จังหวะที่โดนทับ:
    - ตอนกด Connect ใน Rojo: Studio ถูกทำให้ตรงกับไฟล์ทั้งหมด
@@ -109,6 +112,8 @@
    - ศัตรู = Model ที่มี Humanoid + HumanoidRootPart
      ชิ้นส่วนตัวต้องอยู่ใน Model เดียวกับ Humanoid (ถ้าซ้อน Model ข้างใน hitbox จะหา Humanoid ไม่เจอ)
    - ใส่ Highlight ในตัวศัตรู -> ถึงจะกระพริบขาวตอนโดนฟัน
+     EnemyVisualsClient เปิด/ปิด Highlight ทุกอันเอง (โชว์แค่ที่ใกล้สุด 27 อัน)
+     อยากซ่อน Highlight ให้ลบทิ้ง อย่าใช้ Enabled = false
    - ชื่อ "TrainingDummy" -> เลือดเต็มคืนเองหลังตาย 1.2 วิ (เปลี่ยนชื่อ = ไม่รีเลือด)
    - StarterCharacter ต้องมี HumanoidRootPart (กล้องตาม) และเป็น R15
      (RightUpperArm.RightShoulder, UpperTorso.Waist) ไม่งั้นท่าฟันไม่ขยับ
@@ -117,7 +122,9 @@
      ชื่อ Part = ชนิดศัตรูใน EnemyData (Grunt / Brute) หรือใส่ Attribute EnemyType
      ไม่มีโฟลเดอร์นี้ = โค้ดวางด่านเริ่มต้นรอบ SpawnLocation (ลูกสมุน 6 + บอส 1)
      เหนือ Part 10 studs ห้ามมีหลังคา (ศัตรูยิง Raycast หาพื้นจากตรงนั้น)
-   - ศัตรูเดินตรงเข้าหาผู้เล่น (ไม่มี pathfinding) ทางเดินต้องโล่งและกว้างพอให้บอส (~6 studs)
+   - ศัตรูเดินอ้อมกำแพงได้ (PathfindingService) แต่กระโดดไม่ได้
+     ทางที่ต้องกระโดดขึ้น = ศัตรูไปไม่ถึง, ทางเดินต้องกว้างพอให้บอส (~10 studs)
+     ของตกแต่งที่ไม่อยากให้ขวางทาง -> ตั้ง CanCollide = false
 
 ------------------------------------------------------------------------------
 4. วิธีทำงานร่วมกัน 2 คน (TEAM WORKFLOW: Team Create + Git + Rojo):
@@ -145,15 +152,24 @@
 ------------------------------------------------------------------------------
 5. ปัญหาที่รู้แล้ว ยังไม่ได้แก้ (KNOWN ISSUES):
    - Workspace.Script1: สคริปต์ว่าง 3 ตัว (print "Hello world!") ปนอยู่ในแมพ -> ลบทิ้งใน Studio
-   - DataStore ใช้ไม่ได้ใน game.rbxl (สำเนาในเครื่อง) -> ขึ้น "โหลดข้อมูลไม่สำเร็จ" เป็นเรื่องปกติ
-     เทสการเซฟใน Team Create + เปิด Game Settings -> Security -> Enable Studio Access to API Services
-   - Highlight แสดงพร้อมกันได้สูงสุด 31 อัน (ศัตรู + ผู้เล่น + คลื่นดาบ) ศัตรูเยอะเกิน เส้นขอบจะหาย
-   - ศัตรูยังไม่มีท่าเดิน (Blockout เลื่อนไปเฉยๆ), ไม่มี pathfinding, เลือดไม่ปรับตามจำนวนผู้เล่น
-   - ยังไม่ได้ปรับบาลานซ์: ค่าดาเมจ, เลือดศัตรู, EXP และอัตราดรอปเป็นค่าตั้งต้นคร่าวๆ
+     (แก้จากโค้ดไม่ได้ เพราะแมพอยู่ใน Team Create)
+   - ยังไม่ได้ playtest บาลานซ์ ตัวเลขตอนนี้มาจากการคำนวณ (เลเวล 1 ไม่มีของ, ตีไม่พลาด):
+     ภูตหินตายใน 3 ฟัน, บอสคนเดียว ~15-20 วิ (รวมเวลาหลบทุบ), 2 คน ~10-15 วิ
+   - ศัตรูยังไม่มีท่าง้างตอนโจมตี (มีแค่ท่าเดิน), pathfinding ไม่กระโดด
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-29]
+   - CombatServer / PlayerData: พารามิเตอร์จาก Remote ใช้ type any แทน unknown
+     (ส่วนเสริม Roblox LSP รุ่นเก่าไม่รู้จัก unknown -> ขึ้นเตือนใน Problems, ผลการทำงานเหมือนเดิม)
+   - แก้ KNOWN ISSUES:
+     + ศัตรูมีท่าเดิน: แขนขาเป็น Motor6D (EnemyService) + EnemyVisualsClient แกว่งตามความเร็วเดิน
+     + ศัตรูเดินอ้อมสิ่งกีดขวาง: ทางโล่ง = เดินตรง, ถ้ามีของขวาง (Blockcast ขนาดตัว) -> PathfindingService
+     + เลือดศัตรู +50% ต่อผู้เล่นที่เพิ่มมา 1 คน (ปรับทันทีตอนคนเข้า/ออก คง % เลือดเดิม)
+     + Highlight เกิน 31: EnemyVisualsClient เปิดเฉพาะ 27 อันที่ใกล้ตัวเราสุด (เหลือที่ให้คลื่นดาบ)
+     + DataStore ใน Studio ที่ไม่มีสิทธิ์: ไม่ลองซ้ำ 3 รอบแล้ว, ขึ้น "เทสใน Studio: ... ไม่บันทึก"
+       แทน "โหลดข้อมูลไม่สำเร็จ", DataStatus = "NoAccess"
+     + บาลานซ์: คำนวณเวลาฆ่าแล้วอยู่ในช่วงที่โอเค (ดูข้อ 5) ยังไม่เปลี่ยนตัวเลข รอ playtest
    - MVP เวอร์ชันแรก (ตามเอกสารแผน Project poe หัวข้อ 3):
      + สกิลที่ 2 หมุนฟัน (SpinSlash: คลิกขวา / Q, วงรอบตัว) + แถบสกิลแสดงคูลดาวน์
        + มือถือ: ปุ่มสกิลแตะได้, เล็งศัตรูใกล้สุดเอง / กดค้างตีต่อเนื่องได้ทุกสกิล
