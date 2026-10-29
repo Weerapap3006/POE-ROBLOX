@@ -107,19 +107,29 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 ---
 
-## กฎกันทับงานกัน
+## แยกงาน: แมพ = Studio / โค้ด = VS Code + GitHub
 
-| ✅ แก้ใน Studio ได้ | ❌ ห้ามแก้ใน Studio (ต้องแก้ไฟล์ใน `src/`) |
+| 🗺️ แมพ → แก้ใน **Roblox Studio** (อยู่ใน Team Create, ไม่ขึ้น GitHub) | 💻 โค้ด → แก้ใน **VS Code** แล้ว push ขึ้น **GitHub** |
 |---|---|
-| ทุกอย่างใน Workspace (แมพ, `Enemies/TrainingDummy` ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `CombatServer`, `CombatClient`, `CameraScript`, `_ARCHITECTURE` |
-| `StarterPlayer.StarterCharacter` | ถ้าแก้ใน Studio จะ**โดน Rojo เขียนทับ**ตอนใครก็ตามกด Connect หรือเซฟไฟล์นั้น |
-| Lighting, Teams, SoundService ฯลฯ | ลบ → Rojo สร้างกลับมา, เปลี่ยนชื่อ → ได้ตัวซ้ำ 2 ตัว |
+| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `CombatServer`, `CombatClient`, `CameraScript`, `_ARCHITECTURE` |
+| `StarterPlayer.StarterCharacter` | ถ้าไปแก้สคริปต์พวกนี้ใน Studio จะ**โดน Rojo เขียนทับ**ตอนใครก็ตามกด Connect หรือเซฟไฟล์นั้น |
+| Lighting, Teams, SoundService, หน้าตา UI ใน StarterGui | ลบใน Studio → Rojo สร้างกลับมา, เปลี่ยนชื่อ → ได้ตัวซ้ำ 2 ตัว |
 
-รายการเต็มอยู่ในหัวข้อ 3 ของ `_ARCHITECTURE.luau`
+**ของใหม่ใส่ที่ไหน**
+
+- **สคริปต์ทุกตัวที่เขียนเอง** → สร้างเป็นไฟล์ใน `src/` เสมอ ห้ามกด Insert Script ใน Studio
+  - ฝั่ง server → `src/ServerScriptService/ชื่อ.server.luau`
+  - ฝั่ง client → `src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau`
+  - ใช้ร่วมกัน → `src/ReplicatedStorage/Modules/ชื่อ.luau`
+- **Part / Model / Terrain / แสง / เสียง / หน้าตา UI** → สร้างใน Studio
+- ข้อยกเว้น: LocalScript `Animate` ใน TrainingDummy และ StarterCharacter เป็นสคริปต์ท่าเดินที่ติดมากับหุ่น R15 ปล่อยไว้ในโมเดลได้
+
+คนแต่งแมพต้องอ่าน **"สิ่งที่โค้ดต้องการจากแมพ"** ในหัวข้อ 3 ของ [`_ARCHITECTURE.luau`](src/ReplicatedStorage/_ARCHITECTURE.luau) ด้วย เช่น ศัตรูต้องมี Humanoid กับ HumanoidRootPart, StarterCharacter ต้องเป็น R15 ถ้าทำข้อพวกนี้หลุด โค้ดจะพังโดยไม่ขึ้น error
+
+**กันทับงานกัน**
 
 - แบ่งงานกันคนละไฟล์ ถ้าต้องแก้ไฟล์เดียวกันให้บอกกันก่อน
-- จะสร้างสคริปต์ใหม่ ให้สร้างเป็นไฟล์ใน `src/` (ไม่ใช่กด Insert ใน Studio) จะได้ขึ้น GitHub ด้วย
-  - `ชื่อ.server.luau` = Script, `ชื่อ.client.luau` = LocalScript, `ชื่อ.luau` = ModuleScript
+- ถ้าแก้แมพพร้อมกันใน Team Create ให้บอกกันว่าใครแต่งโซนไหน
 
 ---
 

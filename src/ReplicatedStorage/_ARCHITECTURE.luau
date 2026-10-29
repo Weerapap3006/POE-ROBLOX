@@ -6,7 +6,7 @@
 ==============================================================================
 
 1. โครงสร้างโฟลเดอร์หลัก (EXPLORER STRUCTURE):
-   - Workspace  [อยู่ใน game.rbxl เท่านั้น ไม่ sync ผ่าน Rojo]
+   - Workspace  [แมพ: แก้ใน Studio, อยู่ใน Team Create, ไม่ขึ้น GitHub]
      └── Enemies
           └── TrainingDummy (Model) : หุ่นซ้อมมือ R15 (HP 500, รีเลือดอัตโนมัติเมื่อตาย)
 
@@ -22,7 +22,7 @@
 
    - StarterPlayer (ตั้งค่าตัวละครและสคริปต์ฝั่งผู้เล่น)
      ├── StarterCharacter (Model) : หุ่นพื้นฐาน R15 Anime Base + CelShadeOutline (Highlight)
-     │                               [อยู่ใน game.rbxl เท่านั้น ไม่ sync ผ่าน Rojo]
+     │                               [แมพ: แก้ใน Studio, อยู่ใน Team Create, ไม่ขึ้น GitHub]
      └── StarterPlayerScripts
           ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมด้วยลูกกลิ้ง
           └── CombatClient (LocalScript) : หันหน้าตามเมาส์, รับคลิกซ้าย, เล่น VFX, เลขดาเมจเด้ง
@@ -36,8 +36,8 @@
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน     --> StarterPlayer.StarterCharacter (แก้ใน Studio)
 
 ------------------------------------------------------------------------------
-3. ⚠ คำเตือนสำหรับเพื่อน: ROJO จะเขียนทับอะไรบ้าง? (ROJO SYNC RULES):
-   [ห้ามแก้ใน Studio] มีไฟล์ใน src/ -> Rojo เขียนทับเสมอ ต้องแก้ที่ไฟล์เท่านั้น
+3. ⚠ แยกงาน: แมพ = Studio / โค้ด = VS Code + GitHub (MAP vs CODE):
+   [โค้ด: ห้ามแก้ใน Studio] มีไฟล์ใน src/ -> Rojo เขียนทับเสมอ ต้องแก้ที่ไฟล์แล้ว push ขึ้น GitHub
    - ReplicatedStorage._ARCHITECTURE              --> src/ReplicatedStorage/_ARCHITECTURE.luau
    - ReplicatedStorage.Modules.SkillData          --> src/ReplicatedStorage/Modules/SkillData.luau
    - ReplicatedStorage.Remotes.CombatRemote       --> src/ReplicatedStorage/Remotes/CombatRemote.model.json
@@ -52,14 +52,32 @@
    - ลบสคริปต์พวกนี้ใน Studio -> Rojo สร้างกลับมาใหม่
    - เปลี่ยนชื่อใน Studio -> ได้ตัวซ้ำ 2 ตัว (ตัวชื่อเดิมจาก Rojo + ตัวที่เปลี่ยนชื่อ)
 
-   [แก้ใน Studio ได้] ไม่มีไฟล์ใน src/ -> Rojo ไม่ยุ่ง
-   - Workspace ทั้งหมด (Enemies/TrainingDummy, Script1, SpawnLocation, Baseplate, Terrain)
+   [แมพ: แก้ใน Studio] ไม่มีไฟล์ใน src/ -> Rojo ไม่ยุ่ง, ไม่ขึ้น GitHub
+   - Workspace ทั้งหมด (Enemies/TrainingDummy, SpawnLocation, Baseplate, Terrain)
    - StarterPlayer.StarterCharacter
    - Lighting, Teams, SoundService และ service อื่นที่ไม่อยู่ใน default.project.json
-   - ของที่สร้างใหม่ใน StarterGui, StarterPack, ServerStorage, ReplicatedFirst,
-     StarterCharacterScripts (โฟลเดอร์ใน src/ ยังว่าง)
-   * ของกลุ่มนี้ไม่ได้ถูกเก็บเป็นไฟล์: ถ้า game.rbxl หาย/พัง ก็หายด้วย
+   - หน้าตา UI (ScreenGui/Frame/ปุ่ม) ใน StarterGui
+   * แมพเก็บอยู่ใน Team Create เท่านั้น (ย้อนเวอร์ชันได้ที่ File -> Version History)
    * ถ้าวันหลังมีไฟล์ชื่อเดียวกันเพิ่มใน src/ ของใน Studio จะโดนทับ
+
+   ของใหม่ใส่ที่ไหน:
+   - สคริปต์ทุกตัวที่เราเขียนเอง -> สร้างเป็นไฟล์ใน src/ เสมอ (ห้ามกด Insert Script ใน Studio)
+       ฝั่ง server      --> src/ServerScriptService/ชื่อ.server.luau
+       ฝั่ง client      --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
+       ใช้ร่วมกัน       --> src/ReplicatedStorage/Modules/ชื่อ.luau
+       (สคริปต์ของปุ่ม UI ก็ใส่ฝั่ง client แล้วไปหา UI ผ่าน PlayerGui)
+   - Part / Model / Terrain / แสง / เสียง / หน้าตา UI -> สร้างใน Studio
+   - ข้อยกเว้น: LocalScript "Animate" ใน TrainingDummy และ StarterCharacter
+     เป็นสคริปต์ท่าเดินมาตรฐานที่ติดมากับหุ่น R15 -> ปล่อยไว้ในโมเดล ไม่ต้องย้าย
+
+   สิ่งที่โค้ดต้องการจากแมพ (แก้แมพแล้วอย่าทำข้อพวกนี้พัง):
+   - ศัตรู = Model ที่มี Humanoid + HumanoidRootPart
+     ชิ้นส่วนตัวต้องอยู่ใน Model เดียวกับ Humanoid (ถ้าซ้อน Model ข้างใน hitbox จะหา Humanoid ไม่เจอ)
+   - ใส่ Highlight ในตัวศัตรู -> ถึงจะกระพริบขาวตอนโดนฟัน
+   - ชื่อ "TrainingDummy" -> เลือดเต็มคืนเองหลังตาย 1.2 วิ (เปลี่ยนชื่อ = ไม่รีเลือด)
+   - StarterCharacter ต้องมี HumanoidRootPart (กล้องตาม) และเป็น R15
+     (RightUpperArm.RightShoulder, UpperTorso.Waist) ไม่งั้นท่าฟันไม่ขยับ
+   - ห้ามสร้าง Remotes / Modules ใน Studio เอง (มาจากโค้ดทั้งหมด)
 
 ------------------------------------------------------------------------------
 4. วิธีทำงานร่วมกัน 2 คน (TEAM WORKFLOW: Team Create + Git + Rojo):
@@ -85,12 +103,16 @@
 
 ------------------------------------------------------------------------------
 5. ปัญหาที่รู้แล้ว ยังไม่ได้แก้ (KNOWN ISSUES):
+   - Workspace.Script1: สคริปต์ว่าง 3 ตัว (print "Hello world!") ปนอยู่ในแมพ -> ลบทิ้งใน Studio
    - CombatClient.playSlashVFX: ท่าเหวี่ยงแขน/บิดเอวตั้ง Motor6D.Transform ครั้งเดียว
      แต่ Animator เขียนทับทุกเฟรม ทำให้แทบมองไม่เห็นท่าฟัน (VFX เสี้ยวพระจันทร์ยังขึ้นปกติ)
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-29]
+   - _ARCHITECTURE หัวข้อ 3: เปลี่ยนเป็น "แยกงาน แมพ = Studio / โค้ด = VS Code + GitHub"
+     + เพิ่ม "ของใหม่ใส่ที่ไหน" และ "สิ่งที่โค้ดต้องการจากแมพ"
+     + KNOWN ISSUES: Workspace.Script1 (สคริปต์ว่างในแมพ) ต้องลบใน Studio
    - .gitignore: ไม่เอา settings ส่วนตัวของ Claude Code (.claude/settings.local.json) ขึ้น git
    - README.md: เขียนใหม่เป็นคู่มือเพื่อน (ลง Git/VS Code/Rojo 7.7.1, clone, ขั้นตอนทุกวัน,
      กฎกันทับงาน, ปัญหาที่เจอบ่อย)
