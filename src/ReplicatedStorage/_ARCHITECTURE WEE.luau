@@ -49,7 +49,8 @@
        MainHand, OffHand, Cloth, Helmet, Amulet, Ring1, Ring2, Special1, Special2
      + รองรับการใส่ไอเทมประเภท Ring ลงช่อง Ring1/Ring2 ที่ว่างอัตโนมัติ และ Special ลงช่อง Special1/Special2 ที่ว่างอัตโนมัติ
      + รองรับการย้ายข้อมูลเซฟเก่า (Weapon -> MainHand, Armor -> Cloth) ไม่ให้ของเดิมหาย
-     + ปรับหน้าต่าง InventoryClient ฝั่งซ้ายให้จัดเรียงช่องสวมใส่ทั้ง 9 ช่องแบบ 2 คอลัมน์สวยงามพร้อมแสดงค่าสเตตัสด้านล่าง
+     + ปรับหน้าต่าง InventoryClient ฝั่งซ้ายให้จัดเรียงช่องสวมใส่เป็นกรอบสี่เหลี่ยมจัตุรัส (56x56) เรียง 3 คอลัมน์แนวตั้ง:
+       คอลัมน์ 1 (Helmet, Cloth, MainHand, OffHand), คอลัมน์ 2 (Amulet, Ring1, Ring2), คอลัมน์ 3 (Special1, Special2) พร้อมแสดงสเตตัสด้านล่าง
    - MinimapClient / TeleportRemote / EnemyService:
      + เพิ่มปุ่มตั้งค่า ⚙️ ข้างมินิแมพมุมขวาบน (หรือกดปุ่มลัด P) และปรับข้อความ UI เป็นภาษาอังกฤษ
      + ออกแบบหน้าต่าง Settings แบบหน้าเมนูหลัก (Main Menu) ที่ต้องกดเลือกหมวดก่อนเข้าไปปรับค่า:

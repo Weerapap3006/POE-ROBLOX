@@ -23,7 +23,7 @@ local TOGGLE_KEY = Enum.KeyCode.B
 local GRID_COLUMNS = 5
 local CELL_SIZE = 54
 local CELL_GAP = 6
-local SIDE_WIDTH = 228
+local SIDE_WIDTH = 200
 local CONTENT_HEIGHT = 340
 local GRID_WIDTH = GRID_COLUMNS * CELL_SIZE + (GRID_COLUMNS - 1) * CELL_GAP
 local WINDOW_WIDTH = 12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12 + SIDE_WIDTH + 12
@@ -130,59 +130,72 @@ local leftColumn = column(12, SIDE_WIDTH)
 local gridColumn = column(12 + SIDE_WIDTH + 12, GRID_WIDTH)
 local detailColumn = column(12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12, SIDE_WIDTH)
 
--- Left: 9 Equipment Slots Layout
--- Row 1: Helmet | Amulet
--- Row 2: MainHand | OffHand
--- Row 3: Cloth (Full Width)
--- Row 4: Ring1 | Ring2
--- Row 5: Special1 | Special2
+-- Left: 9 Square Equipment Slots (3 Vertical Columns - Layout A)
+-- Col 0 (Main Gear):    Helmet, Cloth, MainHand, OffHand
+-- Col 1 (Accessories):  Amulet, Ring1, Ring2
+-- Col 2 (Specials):     Special1, Special2
 Ui.text({
 	Size = UDim2.new(1, 0, 0, 20),
-	Text = "อุปกรณ์สวมใส่ (Equipment)",
+	Text = "Equipment Slots",
 	TextSize = 14,
 	TextColor3 = Ui.Colors.TextDim,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = leftColumn,
 })
 
-local SLOT_LAYOUT: { { Slot: string, Row: number, Col: number, Span: number } } = {
-	{ Slot = "Helmet", Row = 0, Col = 0, Span = 1 },
-	{ Slot = "Amulet", Row = 0, Col = 1, Span = 1 },
-	{ Slot = "MainHand", Row = 1, Col = 0, Span = 1 },
-	{ Slot = "OffHand", Row = 1, Col = 1, Span = 1 },
-	{ Slot = "Cloth", Row = 2, Col = 0, Span = 2 },
-	{ Slot = "Ring1", Row = 3, Col = 0, Span = 1 },
-	{ Slot = "Ring2", Row = 3, Col = 1, Span = 1 },
-	{ Slot = "Special1", Row = 4, Col = 0, Span = 1 },
-	{ Slot = "Special2", Row = 4, Col = 1, Span = 1 },
+local SLOT_LAYOUT: { { Slot: string, Col: number, Row: number } } = {
+	-- Column 0: Helmet, Cloth, MainHand, OffHand
+	{ Slot = "Helmet", Col = 0, Row = 0 },
+	{ Slot = "Cloth", Col = 0, Row = 1 },
+	{ Slot = "MainHand", Col = 0, Row = 2 },
+	{ Slot = "OffHand", Col = 0, Row = 3 },
+	-- Column 1: Amulet, Ring1, Ring2
+	{ Slot = "Amulet", Col = 1, Row = 0 },
+	{ Slot = "Ring1", Col = 1, Row = 1 },
+	{ Slot = "Ring2", Col = 1, Row = 2 },
+	-- Column 2: Special1, Special2
+	{ Slot = "Special1", Col = 2, Row = 0 },
+	{ Slot = "Special2", Col = 2, Row = 1 },
 }
 
-local SLOT_ROW_HEIGHT = 42
-local SLOT_ROW_GAP = 5
-local HALF_SLOT_W = math.floor((SIDE_WIDTH - 6) / 2)
+local SLOT_SIZE = 56
+local SLOT_GAP = 8
 
 local slotButtons: { [string]: TextButton } = {}
 for _, info in ipairs(SLOT_LAYOUT) do
-	local xOffset = if info.Col == 1 then HALF_SLOT_W + 6 else 0
-	local width = if info.Span == 2 then SIDE_WIDTH else HALF_SLOT_W
-	local yOffset = 22 + info.Row * (SLOT_ROW_HEIGHT + SLOT_ROW_GAP)
+	local xOffset = info.Col * (SLOT_SIZE + SLOT_GAP)
+	local yOffset = 24 + info.Row * (SLOT_SIZE + SLOT_GAP)
 
 	slotButtons[info.Slot] = Ui.button({
 		Name = info.Slot,
 		Position = UDim2.fromOffset(xOffset, yOffset),
-		Size = UDim2.fromOffset(width, SLOT_ROW_HEIGHT),
-		TextSize = 12,
+		Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE),
+		TextSize = 11,
+		TextScaled = true,
 		TextWrapped = true,
 		Parent = leftColumn,
-	}, { Ui.corner(6), Ui.stroke(Ui.Colors.Stroke, 1) })
+	}, {
+		Ui.corner(6),
+		Ui.stroke(Ui.Colors.Stroke, 1.5),
+		Ui.new("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 4),
+		}),
+		Ui.new("UITextSizeConstraint", {
+			MaxTextSize = 12,
+			MinTextSize = 8,
+		}),
+	})
 end
 
--- Left: stats summary (from player attributes set by the server)
-local statsTopY = 22 + 5 * (SLOT_ROW_HEIGHT + SLOT_ROW_GAP) + 4
+-- Left: stats summary below the 4 rows of square equipment slots
+local statsTopY = 24 + 4 * (SLOT_SIZE + SLOT_GAP) + 2
 local statsLabel = Ui.text({
 	Position = UDim2.fromOffset(0, statsTopY),
 	Size = UDim2.new(1, 0, 1, -statsTopY),
-	TextSize = 14,
+	TextSize = 13,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextYAlignment = Enum.TextYAlignment.Top,
 	Text = "",
@@ -303,7 +316,7 @@ local function renderEquipped()
 	for slot, button in pairs(slotButtons) do
 		local item = equipped[slot]
 		local slotName = ItemData.SlotNames[slot] or slot
-		button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName .. "\n— Empty —"
+		button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName
 		button.TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim
 		button.BackgroundColor3 = if item and item.Id == selectedId
 			then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
@@ -313,7 +326,7 @@ end
 
 local function renderStats()
 	statsLabel.Text = string.format(
-		"Lv %d   |   เลือดสูงสุด %d\nดาเมจเพิ่ม +%d   |   ความเร็วโจมตี +%d%%",
+		"Lv %d   |   HP %d\nDMG +%d   |   ATK SPD +%d%%",
 		player:GetAttribute("Level") or 1,
 		player:GetAttribute("MaxHealth") or 100,
 		player:GetAttribute("FlatDamage") or 0,
