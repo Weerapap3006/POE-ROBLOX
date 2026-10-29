@@ -19,7 +19,8 @@
      ├── _ARCHITECTURE DON (ModuleScript) : โน้ตของ DON / chwwy (ไฟล์นี้)
      ├── _ARCHITECTURE WEE (ModuleScript) : โน้ตของ WEE / Weerapap3006
      ├── Remotes
-     │    ├── CombatRemote (RemoteEvent) : ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู
+     │    ├── CombatRemote (RemoteEvent) : ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู, "!" ตอนศัตรูเห็นเรา
+     │    ├── DodgeRemote (RemoteEvent) : กลิ้งหลบ (ขอช่วงอมตะจาก Server)
      │    ├── InventoryRemote (RemoteEvent) : สวมใส่/ถอด/ทิ้งของ + ข้อมูลกระเป๋า
      │    ├── NotifyRemote (RemoteEvent) : ข้อความกลางจอ
      │    └── TeleportRemote (RemoteEvent) : ขอวาร์ปกลับ Lobby จากหน้าตั้งค่า
@@ -27,7 +28,7 @@
           ├── SkillData : ค่าสกิล Slash / Spin Slash
           ├── EnemyData : ค่าศัตรู Stone Grunt / บอส Stone Guardian (เลือด, ท่าตี, EXP, ดรอป)
           ├── ItemData : ไอเทม, affix, ความหายาก, ช่องสวมใส่ 9 ช่อง
-          ├── PlayerStats : เลือด/ดาเมจต่อเลเวล, EXP ที่ต้องใช้
+          ├── PlayerStats : เลือด/ดาเมจต่อเลเวล, EXP ที่ต้องใช้, ค่ากลิ้งหลบ (DODGE_*)
           └── Ui : สี/ฟอนต์/ตัวช่วยสร้าง UI
 
    - ServerScriptService (โซน Server: ปลอดภัย 100% กันโปรโกง)
@@ -45,7 +46,8 @@
      │                               [แมพ: แก้ใน Studio, อยู่ใน Team Create, ไม่ขึ้น GitHub]
      └── StarterPlayerScripts
           ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมด้วยลูกกลิ้ง
-          ├── CombatClient (LocalScript) : เล็ง, กดสกิล, แถบสกิล, VFX, เตือนท่าศัตรู, เลขดาเมจ
+          ├── CombatClient (LocalScript) : เล็ง, กดสกิล, กลิ้งหลบ (Space, ไม่มีกระโดด), แถบสกิล, VFX,
+          │                                เตือนท่าศัตรู + "!", เลขดาเมจ
           ├── HudClient (LocalScript) : แถบเลือด/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
           ├── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด B)
           ├── EnemyVisualsClient (LocalScript) : ท่าเดินศัตรู + คุมจำนวน Highlight ไม่ให้เกิน 31
@@ -58,12 +60,15 @@
    - แก้เลือด / ความเร็ว / ดาเมจ / ดรอปของศัตรู --> ReplicatedStorage.Modules.EnemyData
    - เพิ่มไอเทม / affix / ช่วงค่าที่สุ่ม / ช่องสวมใส่ --> ReplicatedStorage.Modules.ItemData
    - แก้เลือดเริ่มต้น / เลเวลอัป / EXP         --> ReplicatedStorage.Modules.PlayerStats
+   - แก้ระยะ / คูลดาวน์ / ช่วงอมตะของกลิ้งหลบ  --> ReplicatedStorage.Modules.PlayerStats (DODGE_*)
+     (ปุ่มกลิ้ง + ท่าตีลังกา: CombatClient DODGE_KEY, ROLL_DIP, ROLL_PIVOT)
    - แก้สีเอฟเฟกต์ / ขนาดตัวเลขดาเมจ / ปุ่มสกิล --> StarterPlayerScripts.CombatClient
    - แก้สี UI ทั้งเกม                       --> ReplicatedStorage.Modules.Ui
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox    --> ServerScriptService.CombatServer
    - แก้ AI ศัตรู / รูปร่างศัตรู / ด่านเริ่มต้น / ประตูวาร์ป --> ServerStorage.Modules.EnemyService
      (เลือดศัตรูเพิ่มตามจำนวนผู้เล่น: HEALTH_PER_EXTRA_PLAYER, หลบสิ่งกีดขวาง: PATH_*,
-      รีเซ็ตด่าน: resetDungeon, ประตูวาร์ป + TeleportRemote: setupDungeonPortals)
+      รีเซ็ตด่าน: resetDungeon, ประตูวาร์ป + TeleportRemote: setupDungeonPortals,
+      เวลายืนนิ่งตอนเห็นผู้เล่นครั้งแรก: ALERT_TIME, ระดับสายตา: EYE_HEIGHT)
    - แก้ท่าเดินศัตรู / จำนวนเส้นขอบที่โชว์     --> StarterPlayerScripts.EnemyVisualsClient
    - แก้ปุ่มเปิดกระเป๋า / ช่องสวมใส่บนจอ      --> StarterPlayerScripts.InventoryClient (TOGGLE_KEY, SLOT_LAYOUT)
    - แก้มินิแมพ / หน้าตั้งค่า / ปุ่ม M, P       --> StarterPlayerScripts.MinimapClient
@@ -78,7 +83,7 @@
    - ReplicatedStorage.Modules.*                  --> src/ReplicatedStorage/Modules/ชื่อ.luau
        (SkillData, EnemyData, ItemData, PlayerStats, Ui)
    - ReplicatedStorage.Remotes.*                  --> src/ReplicatedStorage/Remotes/ชื่อ.model.json
-       (CombatRemote, InventoryRemote, NotifyRemote, TeleportRemote)
+       (CombatRemote, DodgeRemote, InventoryRemote, NotifyRemote, TeleportRemote)
    - ServerScriptService.*                        --> src/ServerScriptService/ชื่อ.server.luau
        (CombatServer, EnemyServer, PlayerDataServer)
    - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
@@ -123,6 +128,9 @@
    - ชื่อ "TrainingDummy" -> เลือดเต็มคืนเองหลังตาย 1.2 วิ (เปลี่ยนชื่อ = ไม่รีเลือด)
    - StarterCharacter ต้องมี HumanoidRootPart (กล้องตาม) และเป็น R15
      (RightUpperArm.RightShoulder, UpperTorso.Waist) ไม่งั้นท่าฟันไม่ขยับ
+     (LowerTorso.Root) ไม่งั้นท่ากลิ้งไม่ขยับ (ตัวยังพุ่งไปได้)
+   - ผู้เล่นกระโดดไม่ได้ (Space = กลิ้งหลบ) -> ทุกจุดในแมพต้องเดินขึ้นได้ ห้ามมีขอบที่ต้องกระโดด
+   - ศัตรูมองไม่ทะลุ Part ที่ CanCollide = true -> ผู้เล่นหลังกำแพงจะยังไม่โดนเห็น
    - ห้ามสร้าง Remotes / Modules ใน Studio เอง (มาจากโค้ดทั้งหมด)
    - ด่าน: ใส่ Part ใน Workspace.EnemySpawns ตรงจุดที่อยากให้ศัตรูเกิด
      ชื่อ Part = ชนิดศัตรูใน EnemyData (Grunt / Brute) หรือใส่ Attribute EnemyType
@@ -165,14 +173,26 @@
 5. ปัญหาที่รู้แล้ว ยังไม่ได้แก้ (KNOWN ISSUES):
    - เข้าประตูวาร์ปจาก Lobby = รีเซ็ตทั้งด่าน แม้มีเพื่อนเล่นอยู่ในด่าน
      (ศัตรูที่เพื่อนกำลังสู้จะหายแล้วเกิดใหม่หมด)
-   - ยังไม่ได้ playtest บาลานซ์ ตัวเลขตอนนี้มาจากการคำนวณ (เลเวล 1 ไม่มีของ, ตีไม่พลาด):
-     Stone Grunt ตายใน 3 ฟัน, บอสคนเดียว ~15-20 วิ (รวมเวลาหลบทุบ), 2 คน ~10-15 วิ,
-     Stone Grunt 10 ตัวรุมพร้อมกัน (กลุ่มในด่านตอนนี้) ฆ่าเราที่ยืนเฉยๆ ใน ~2 วิ
    - ศัตรูยังไม่มีท่าง้างตอนโจมตี (มีแค่ท่าเดิน), pathfinding ไม่กระโดด
+   - ช่วงอมตะของการกลิ้งเริ่มตอน Server ได้รับ ไม่ใช่ตอนกด (ping สูง = โดนตีตอนเพิ่งกดได้)
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - เทสซ้ำผ่าน (มอนไม่วาปแล้ว, "!" ขึ้น, กลิ้งหลบผ่านวงบอสได้) + เฟส 1-5 เทสผ่านครบ:
+     + KNOWN ISSUES: เอาเรื่องมอนวาปและ "ยังไม่ได้ playtest บาลานซ์" ออก
+       (ตารางตัวเลขบาลานซ์ยังอยู่ใน ARCHITECTURE.md หัวข้อ 5 ไว้อ้างอิงตอนปรับค่า)
+     + Google Doc "Project poe" + Project poe.docx: เฟส 1-5 = เสร็จ (จบ 30/10),
+       ติ๊กทดสอบมือถือจำลอง / เข้าออกหลายรอบ / ปรับบาลานซ์, งานต่อไป = หาคนลองเล่น 3-5 คน
+   - แก้จากเทสเฟส 6:
+     + ศัตรูวาปมาตีตอนเจอครั้งแรก (EnemyService): ต้องมองเห็นผู้เล่นจริงถึงจะไล่ (Raycast จากระดับตา,
+       ไม่ทะลุกำแพง), เห็นครั้งแรก = ยืนนิ่ง 0.6 วิ + "!" บนหัว (EnemyAlert -> CombatClient),
+       ประตูเข้าด่านโหลดพื้นที่หน้าประตูบน Client ก่อนวาร์ป (RequestStreamAroundAsync)
+     + เอากระโดดออก เปลี่ยนเป็นกลิ้งหลบ: Space / ปุ่ม Dodge บนมือถือ (ตรงที่เคยเป็นปุ่มกระโดด),
+       CombatClient เคลื่อนตัว + ท่าตีลังกา, DodgeRemote ใหม่, CombatServer เช็คคูลดาวน์แล้วตั้ง
+       InvulnerableUntil -> EnemyService ไม่ทำดาเมจช่วงนั้น, ค่าอยู่ใน PlayerStats (DODGE_*)
+     + CombatClient: แยกการสร้างช่องในแถบสกิลเป็น createSlot (ใช้ทั้งสกิลและ Dodge)
+     + Google Doc "Project poe" + Project poe.docx: เฟส 6 = กำลังทำ (เริ่ม 30/10) + ปัญหาที่เจอรอบแรก
    - อัปเดตเอกสารทั้งหมดให้ตรงโค้ดล่าสุด รวมงานของ WEE (41e769a..043131d): ด่าน + ประตูวาร์ป,
      MinimapClient + หน้าตั้งค่า, TeleportRemote, ช่องสวมใส่ 9 ช่อง + AllowOffHand, กระเป๋ากด B,
      ข้อความในเกมเป็นภาษาอังกฤษ (ชื่อสกิล/ศัตรู/ไอเทม/ข้อความแจ้งเตือนที่อ้างในเอกสาร + ปุ่ม ⚙️ -> SET)

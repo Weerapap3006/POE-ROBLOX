@@ -22,6 +22,9 @@ local MELEE_REACH_BONUS = 1.5 -- A melee hit still lands if the target is this m
 local BOSS_CLEAR_COLOR = Color3.fromRGB(255, 215, 70)
 local HEALTH_PER_EXTRA_PLAYER = 0.5 -- Each player after the first adds +50% max health to every enemy
 local DROPS_FOLDER_NAME = "Drops" -- Loot's folder of items on the ground
+local ALERT_TIME = 0.6 -- Seconds an enemy stands still (with a "!" over its head) after spotting a player
+local EYE_HEIGHT = 1.9 -- Studs above the root center at Scale 1; players must be visible from here to be spotted
+local PORTAL_STREAM_TIMEOUT = 3 -- Max seconds the dungeon portal waits for the entrance area to load on the client
 
 -- Pathfinding: enemies walk straight at their goal unless the map blocks the way, then follow a detour
 local PATH_AGENT_RADIUS = 2 -- Studs at Scale 1 (the body is ~4 studs arm to arm)
@@ -62,6 +65,7 @@ type EnemyState = {
 	Attacking: boolean, -- In an attack windup
 	Dead: boolean,
 	NextAttackTime: number,
+	AlertUntil: number, -- Just spotted its target: stands still until this time
 	Contributors: { [Player]: boolean }, -- Everyone who hit it gets the EXP
 	Path: Path, -- PathfindingService path sized for this enemy's body
 	Waypoints: { PathWaypoint }?, -- Current detour around obstacles (nil = walking straight)
@@ -298,6 +302,7 @@ local function spawnEnemy(point: SpawnPoint)
 		Attacking = false,
 		Dead = false,
 		NextAttackTime = 0,
+		AlertUntil = 0,
 		Contributors = {},
 		Path = PathfindingService:CreatePath({
 			AgentRadius = PATH_AGENT_RADIUS * data.Scale,
@@ -362,8 +367,21 @@ local function damagePlayer(character: Model, amount: number)
 	if not humanoid or humanoid.Health <= 0 or character:FindFirstChildOfClass("ForceField") then
 		return -- Dead, or spawn protection
 	end
+	if (character:GetAttribute("InvulnerableUntil") or 0) > os.clock() then
+		return -- Mid dodge roll (CombatServer sets this)
+	end
 	humanoid:TakeDamage(amount)
 	combatRemote:FireAllClients("DamageDealt", character, amount, false)
+end
+
+-- Stops walking and turns to look at a point (flat)
+local function stopAndFace(state: EnemyState, position: Vector3)
+	local root = state.Root
+	state.Humanoid:MoveTo(root.Position)
+	local lookTarget = Vector3.new(position.X, root.Position.Y, position.Z)
+	if (lookTarget - root.Position).Magnitude > 0.1 then
+		root.CFrame = CFrame.lookAt(root.Position, lookTarget)
+	end
 end
 
 local function startAttack(state: EnemyState, target: Model, targetRoot: BasePart)
@@ -373,11 +391,7 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 	state.NextAttackTime = os.clock() + attack.Windup + attack.Cooldown
 
 	-- Stop and face the target during the windup
-	state.Humanoid:MoveTo(root.Position)
-	local lookTarget = Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z)
-	if (lookTarget - root.Position).Magnitude > 0.1 then
-		root.CFrame = CFrame.lookAt(root.Position, lookTarget)
-	end
+	stopAndFace(state, targetRoot.Position)
 
 	-- Slam hits a circle around the enemy, Melee hits the target if it's still in reach
 	local ground = root.Position - Vector3.new(0, state.Humanoid.HipHeight + root.Size.Y / 2, 0)
@@ -412,7 +426,13 @@ end
 -- ==========================================
 -- 5. AI (chase nearest player in range, attack, walk home when pulled too far)
 -- ==========================================
-local function findTarget(state: EnemyState): Model?
+-- Players behind walls go unnoticed, so enemies don't come around a corner already mid-charge
+local function canSee(state: EnemyState, targetRoot: BasePart, mapParams: RaycastParams): boolean
+	local eye = state.Root.Position + Vector3.new(0, EYE_HEIGHT * state.Data.Scale, 0)
+	return workspace:Raycast(eye, targetRoot.Position - eye, mapParams) == nil
+end
+
+local function findTarget(state: EnemyState, mapParams: RaycastParams): Model?
 	local best: Model? = nil
 	local bestDistance = state.Data.AggroRange
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -420,7 +440,7 @@ local function findTarget(state: EnemyState): Model?
 		local root = getAliveRoot(character)
 		if character and root then
 			local distance = flatDistance(root.Position, state.Root.Position)
-			if distance < bestDistance then
+			if distance < bestDistance and canSee(state, root, mapParams) then
 				best = character
 				bestDistance = distance
 			end
@@ -526,8 +546,15 @@ local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastPar
 	end
 
 	if not targetRoot then
-		state.Target = findTarget(state)
+		state.Target = findTarget(state, mapParams)
 		targetRoot = getAliveRoot(state.Target)
+		if targetRoot then
+			-- Just spotted: freeze for a moment with a "!" so the player sees it coming before the charge
+			state.AlertUntil = now + ALERT_TIME
+			stopAndFace(state, targetRoot.Position)
+			combatRemote:FireAllClients("EnemyAlert", state.Model, ALERT_TIME)
+			return
+		end
 	end
 
 	local target = state.Target
@@ -536,6 +563,10 @@ local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastPar
 			moveToward(state, state.Home, now, mapParams)
 		end
 		return
+	end
+
+	if now < state.AlertUntil then
+		return -- Still reacting to spotting the target
 	end
 
 	if flatDistance(targetRoot.Position, root.Position) <= data.Attack.Range then
@@ -612,6 +643,14 @@ local function setupDungeonPortals()
 
 			EnemyService.resetDungeon()
 			local targetPos = if entrancePad then entrancePad.Position + Vector3.new(0, 4, 0) else Vector3.new(250, 4, 0)
+			-- With StreamingEnabled, load the entrance area (and its enemies) on the client before arriving,
+			-- otherwise enemies near the entrance pop into view already charging
+			pcall(function()
+				player:RequestStreamAroundAsync(targetPos, PORTAL_STREAM_TIMEOUT)
+			end)
+			if getAliveRoot(character) == nil or player.Character ~= character then
+				return -- Died or respawned while the area was loading
+			end
 			character:PivotTo(CFrame.lookAt(targetPos, targetPos + Vector3.new(0, 0, -10)))
 
 			local humanoid = character:FindFirstChildOfClass("Humanoid")

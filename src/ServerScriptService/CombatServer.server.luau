@@ -8,6 +8,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local combatRemote = remotesFolder:WaitForChild("CombatRemote") :: RemoteEvent
+local dodgeRemote = remotesFolder:WaitForChild("DodgeRemote") :: RemoteEvent
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local SkillData = require(modulesFolder:WaitForChild("SkillData"))
@@ -20,10 +21,12 @@ local EnemyService = require(serverModules:WaitForChild("EnemyService"))
 -- Track cooldowns (per skill) and combo per player on the Server (Anti-Exploit)
 local playerCooldowns: { [Player]: { [string]: number } } = {}
 local playerComboSteps: { [Player]: number } = {}
+local playerDodgeTimes: { [Player]: number } = {}
 
 Players.PlayerRemoving:Connect(function(player: Player)
 	playerCooldowns[player] = nil
 	playerComboSteps[player] = nil
+	playerDodgeTimes[player] = nil
 end)
 
 -- ==========================================
@@ -127,4 +130,34 @@ combatRemote.OnServerEvent:Connect(function(player: Player, skillId: any, target
 		-- 5. Notify Clients to show Floating Damage Numbers & Hit Flash
 		combatRemote:FireAllClients("DamageDealt", enemyModel, finalDamage, isCrit)
 	end
+end)
+
+-- ==========================================
+-- HANDLE DODGE ROLL FROM CLIENT
+-- ==========================================
+-- The client moves its own character; the server only grants the invulnerability window (after its own cooldown check)
+dodgeRemote.OnServerEvent:Connect(function(player: Player, direction: any)
+	if typeof(direction) ~= "Vector3" then
+		return
+	end
+	local flatDirection = Vector3.new(direction.X, 0, direction.Z)
+	if not (flatDirection.Magnitude > 0.01) then -- Also rejects NaN
+		return
+	end
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+
+	local now = os.clock()
+	if now - (playerDodgeTimes[player] or -math.huge) < PlayerStats.DODGE_COOLDOWN - 0.05 then
+		return
+	end
+	playerDodgeTimes[player] = now
+
+	-- EnemyService ignores hits on this character until then (server clock, only compared on the server)
+	character:SetAttribute("InvulnerableUntil", now + PlayerStats.DODGE_INVULNERABLE_TIME)
+	dodgeRemote:FireAllClients(character) -- Everyone else plays the roll pose
 end)

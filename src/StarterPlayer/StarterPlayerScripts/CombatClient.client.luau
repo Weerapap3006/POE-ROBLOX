@@ -1,10 +1,11 @@
 -- ==========================================
--- COMBAT CLIENT (Aiming, Skill Input & Skill Bar, VFX, Enemy Telegraphs & Damage Numbers)
+-- COMBAT CLIENT (Aiming, Skill Input & Skill Bar, Dodge Roll, VFX, Enemy Telegraphs & Damage Numbers)
 -- Path: StarterPlayer.StarterPlayerScripts.CombatClient
 -- ==========================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
@@ -14,6 +15,7 @@ local camera = workspace.CurrentCamera
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local combatRemote = remotesFolder:WaitForChild("CombatRemote") :: RemoteEvent
+local dodgeRemote = remotesFolder:WaitForChild("DodgeRemote") :: RemoteEvent
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local SkillData = require(modulesFolder:WaitForChild("SkillData"))
@@ -29,8 +31,12 @@ local SKILL_BAR: { { SkillId: string, KeyText: string, Inputs: { EnumItem } } } 
 	{ SkillId = "SpinSlash", KeyText = "RMB / Q", Inputs = { Enum.UserInputType.MouseButton2, Enum.KeyCode.Q } },
 }
 local TOUCH_AUTO_AIM_RANGE = 25 -- Mobile: skills aim at the nearest enemy within this many studs
+local DODGE_KEY = Enum.KeyCode.Space -- Takes over the jump key (jumping is turned off)
+local ROLL_DIP = 0.8 -- Studs the body drops at the middle of the roll pose
+local ROLL_PIVOT = 1 -- Studs above the hips that the body somersaults around
 local SLASH_COLOR = Color3.fromRGB(120, 210, 255) -- Anime cyan energy slash
 local ENEMY_ATTACK_COLOR = Color3.fromRGB(255, 60, 50)
+local ENEMY_ALERT_COLOR = Color3.fromRGB(255, 200, 60) -- "!" over an enemy that just spotted a player
 local OUTLINE_COLOR = Color3.fromRGB(15, 15, 20)
 local PLAYER_HURT_COLOR = Color3.fromRGB(255, 80, 80)
 
@@ -41,6 +47,7 @@ local lastUseTimes: { [string]: number } = {}
 local heldSkills: { [string]: boolean } = {} -- Holding the button keeps attacking
 local comboStep = 1
 local currentMouseWorldPos = Vector3.zero
+local dodgeEndTime = 0 -- Rolling until this time: no attacks, no turning toward the mouse
 local isTouchOnly = Ui.isTouchOnly()
 
 -- Raycast parameters (ignore player's own character and VFX)
@@ -114,6 +121,12 @@ local function updateMouseAiming(deltaTime: number)
 		return
 	end
 
+	-- Rolling: keep facing the roll direction set when it started
+	if os.clock() < dodgeEndTime then
+		humanoid.AutoRotate = false
+		return
+	end
+
 	-- Mobile: face the walking direction (thumbstick) instead, skills auto-aim
 	if isTouchOnly then
 		humanoid.AutoRotate = true
@@ -153,6 +166,14 @@ type SwingState = {
 }
 local activeSwings: { [Motor6D]: SwingState } = {}
 
+-- Dodge roll: the R15 Root joint (hips) somersaults once over DODGE_DURATION, same base-pose tracking as swings
+type RollState = {
+	startTime: number,
+	basePose: CFrame,
+	lastWritten: CFrame?,
+}
+local activeRolls: { [Motor6D]: RollState } = {}
+
 local function startSwing(motor: Motor6D?, offset: CFrame)
 	if not motor then
 		return
@@ -187,7 +208,34 @@ RunService.PreSimulation:Connect(function()
 			swing.lastWritten = pose
 		end
 	end
+
+	for motor, roll in pairs(activeRolls) do
+		if motor.Transform ~= roll.lastWritten then
+			roll.basePose = motor.Transform
+		end
+
+		local t = (now - roll.startTime) / PlayerStats.DODGE_DURATION
+		if t >= 1 or not motor:IsDescendantOf(workspace) then
+			motor.Transform = roll.basePose
+			activeRolls[motor] = nil
+		else
+			-- Full forward flip (top of the body goes forward and down), dipping low halfway through
+			local dip = CFrame.new(0, -ROLL_DIP * math.sin(math.pi * t), 0)
+			local flip = CFrame.new(0, ROLL_PIVOT, 0) * CFrame.Angles(-2 * math.pi * t, 0, 0) * CFrame.new(0, -ROLL_PIVOT, 0)
+			local pose = roll.basePose * dip * flip
+			motor.Transform = pose
+			roll.lastWritten = pose
+		end
+	end
 end)
+
+local function playRollPose(character: Model)
+	local lowerTorso = character:FindFirstChild("LowerTorso")
+	local rootJoint = lowerTorso and lowerTorso:FindFirstChild("Root") :: Motor6D?
+	if rootJoint then
+		activeRolls[rootJoint] = { startTime = os.clock(), basePose = rootJoint.Transform, lastWritten = nil }
+	end
+end
 
 local function getSwingMotors(character: Model): (Motor6D?, Motor6D?)
 	local rightUpperArm = character:FindFirstChild("RightUpperArm")
@@ -430,10 +478,48 @@ local function playEnemyAttack(enemyModel: Model, kind: string, center: Vector3,
 	end
 end
 
+-- Enemy just spotted a player: a "!" pops up over its head while it stands still before charging
+local function playEnemyAlert(enemyModel: Model, duration: number)
+	local head = enemyModel:FindFirstChild("Head") :: BasePart?
+	if not head then
+		return
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "AlertMark"
+	billboard.Size = UDim2.fromOffset(40, 60)
+	billboard.StudsOffsetWorldSpace = Vector3.new(0, head.Size.Y + 1, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = head
+	billboard.Parent = head
+
+	local label = Instance.new("TextLabel")
+	label.AnchorPoint = Vector2.new(0.5, 1)
+	label.Position = UDim2.fromScale(0.5, 1)
+	label.Size = UDim2.fromScale(0.3, 0.3)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.Text = "!"
+	label.TextColor3 = ENEMY_ALERT_COLOR
+	label.TextStrokeColor3 = OUTLINE_COLOR
+	label.TextStrokeTransparency = 0
+	label.Parent = billboard
+
+	-- Pop in with a little overshoot
+	TweenService:Create(label, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = UDim2.fromScale(1, 1),
+	}):Play()
+	Debris:AddItem(billboard, duration)
+end
+
 -- ==========================================
 -- 5. USING SKILLS (mouse / keyboard / skill bar buttons)
 -- ==========================================
 local function getCooldown(skillId: string): number
+	if skillId == "Dodge" then
+		return PlayerStats.DODGE_COOLDOWN
+	end
 	local attackSpeed = player:GetAttribute("AttackSpeed") or 0
 	return PlayerStats.getCooldown(SkillData[skillId].Cooldown, attackSpeed)
 end
@@ -450,8 +536,13 @@ local function useSkill(skillId: string)
 		return
 	end
 
-	-- Client-side cooldown check for responsiveness (the server checks again for real)
+	-- No attacking mid-roll (held buttons pick up again once it ends)
 	local now = os.clock()
+	if now < dodgeEndTime then
+		return
+	end
+
+	-- Client-side cooldown check for responsiveness (the server checks again for real)
 	if now - (lastUseTimes[skillId] or -math.huge) < getCooldown(skillId) then
 		return
 	end
@@ -509,17 +600,115 @@ UserInputService.WindowFocusReleased:Connect(function()
 end)
 
 -- ==========================================
--- 6. SKILL BAR UI (cooldowns; on mobile these are the attack buttons)
+-- 6. DODGE ROLL (replaces jumping: Space / mobile Dodge button)
+-- ==========================================
+-- No jumping in this game. Jump power 0 also hides Roblox's mobile jump button
+local function disableJump(character: Model)
+	local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
+	if not humanoid then
+		return
+	end
+	humanoid.JumpPower = 0
+	humanoid.JumpHeight = 0
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+end
+
+if player.Character then
+	task.spawn(disableJump, player.Character)
+end
+player.CharacterAdded:Connect(disableJump)
+
+-- Roll where the player is walking; standing still rolls toward the mouse (PC) or straight ahead (mobile)
+local function getDodgeDirection(humanoid: Humanoid, rootPart: BasePart): Vector3
+	local direction = humanoid.MoveDirection
+	if direction.Magnitude < 0.1 then
+		direction = if isTouchOnly then rootPart.CFrame.LookVector else currentMouseWorldPos - rootPart.Position
+	end
+	direction = Vector3.new(direction.X, 0, direction.Z)
+	if direction.Magnitude < 0.01 then
+		direction = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
+	end
+	return direction.Unit
+end
+
+local function getDodgeAttachment(rootPart: BasePart): Attachment
+	local existing = rootPart:FindFirstChild("DodgeAttachment")
+	if existing and existing:IsA("Attachment") then
+		return existing
+	end
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "DodgeAttachment"
+	attachment.Parent = rootPart
+	return attachment
+end
+
+-- Pushes the character along the ground for the roll. Only the flat (X/Z) velocity is driven,
+-- so gravity still works when rolling off a ledge
+local function pushRoll(rootPart: BasePart, direction: Vector3)
+	local speed = PlayerStats.DODGE_DISTANCE / PlayerStats.DODGE_DURATION
+	local mover = Instance.new("LinearVelocity")
+	mover.Name = "DodgeVelocity"
+	mover.Attachment0 = getDodgeAttachment(rootPart)
+	mover.RelativeTo = Enum.ActuatorRelativeTo.World
+	mover.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
+	mover.PrimaryTangentAxis = Vector3.xAxis
+	mover.SecondaryTangentAxis = Vector3.zAxis
+	mover.PlaneVelocity = Vector2.new(direction.X, direction.Z) * speed
+	mover.MaxForce = math.huge
+	mover.Parent = rootPart
+	task.delay(PlayerStats.DODGE_DURATION, function()
+		mover:Destroy()
+	end)
+end
+
+local function dodge()
+	local character = player.Character
+	if not character then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not humanoid or not rootPart or humanoid.Health <= 0 then
+		return
+	end
+
+	local now = os.clock()
+	if now - (lastUseTimes.Dodge or -math.huge) < PlayerStats.DODGE_COOLDOWN then
+		return
+	end
+	lastUseTimes.Dodge = now
+	dodgeEndTime = now + PlayerStats.DODGE_DURATION
+
+	local direction = getDodgeDirection(humanoid, rootPart)
+	rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + direction)
+	pushRoll(rootPart, direction)
+	playRollPose(character)
+
+	-- The server grants the invulnerability window (enemy hits miss) after its own cooldown check
+	dodgeRemote:FireServer(direction)
+end
+
+-- Bound above Roblox's own jump action so Space never reaches it
+ContextActionService:BindActionAtPriority("Dodge", function(_, inputState: Enum.UserInputState)
+	if inputState == Enum.UserInputState.Begin then
+		dodge()
+	end
+	return Enum.ContextActionResult.Sink
+end, false, Enum.ContextActionPriority.High.Value, DODGE_KEY)
+
+-- ==========================================
+-- 7. SKILL BAR UI (cooldowns; on mobile these are the attack buttons)
 -- ==========================================
 local SLOT_SIZE = if isTouchOnly then 84 else 64
 
 local skillGui = Ui.screenGui("SkillBar", 1)
 local bar = Ui.new("Frame", {
 	Name = "Bar",
-	-- PC: bottom center. Mobile: right side, above Roblox's jump button
+	-- PC: bottom center, Dodge is the last slot. Mobile: right side, above the Dodge button
 	AnchorPoint = if isTouchOnly then Vector2.new(1, 1) else Vector2.new(0.5, 1),
 	Position = if isTouchOnly then UDim2.new(1, -24, 1, -150) else UDim2.new(0.5, 0, 1, -16),
-	Size = UDim2.fromOffset(#SKILL_BAR * (SLOT_SIZE + 10), SLOT_SIZE),
+	Size = UDim2.fromOffset((if isTouchOnly then #SKILL_BAR else #SKILL_BAR + 1) * (SLOT_SIZE + 10), SLOT_SIZE),
 	BackgroundTransparency = 1,
 	Parent = skillGui,
 }, {
@@ -533,15 +722,16 @@ local bar = Ui.new("Frame", {
 
 local cooldownOverlays: { [string]: { Overlay: Frame, Text: TextLabel } } = {}
 
-for index, entry in ipairs(SKILL_BAR) do
+-- One square slot with a cooldown overlay. id = skill id, or "Dodge" (see getCooldown)
+local function createSlot(id: string, displayName: string, keyText: string, layoutOrder: number, parent: Instance): TextButton
 	local button = Ui.button({
-		Name = entry.SkillId,
-		LayoutOrder = index,
+		Name = id,
+		LayoutOrder = layoutOrder,
 		Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE),
 		BackgroundColor3 = Ui.Colors.Panel,
 		BackgroundTransparency = 0.15,
 		Text = "",
-		Parent = bar,
+		Parent = parent,
 	}, {
 		Ui.corner(10),
 		Ui.stroke(Ui.Colors.Accent, 2),
@@ -549,14 +739,14 @@ for index, entry in ipairs(SKILL_BAR) do
 			Name = "SkillName",
 			Position = UDim2.new(0, 4, 0, 6),
 			Size = UDim2.new(1, -8, 0.5, 0),
-			Text = SkillData[entry.SkillId].Name,
+			Text = displayName,
 			TextScaled = true,
 		}),
 		Ui.text({
 			Name = "KeyText",
 			Position = UDim2.new(0, 4, 0.62, 0),
 			Size = UDim2.new(1, -8, 0.28, 0),
-			Text = if isTouchOnly then "" else entry.KeyText,
+			Text = if isTouchOnly then "" else keyText,
 			TextScaled = true,
 			TextColor3 = Ui.Colors.TextDim,
 		}),
@@ -582,11 +772,24 @@ for index, entry in ipairs(SKILL_BAR) do
 		Parent = button,
 	})
 
+	cooldownOverlays[id] = { Overlay = overlay, Text = cooldownText }
+	return button
+end
+
+for index, entry in ipairs(SKILL_BAR) do
+	local button = createSlot(entry.SkillId, SkillData[entry.SkillId].Name, entry.KeyText, index, bar)
 	button.Activated:Connect(function()
 		useSkill(entry.SkillId)
 	end)
-	cooldownOverlays[entry.SkillId] = { Overlay = overlay, Text = cooldownText }
 end
+
+-- Mobile: Dodge takes the spot of Roblox's jump button (bottom right, under the skills)
+local dodgeButton = createSlot("Dodge", "Dodge", "Space", #SKILL_BAR + 1, if isTouchOnly then skillGui else bar)
+if isTouchOnly then
+	dodgeButton.AnchorPoint = Vector2.new(1, 1)
+	dodgeButton.Position = UDim2.new(1, -24, 1, -40)
+end
+dodgeButton.Activated:Connect(dodge)
 
 RunService.RenderStepped:Connect(function()
 	local now = os.clock()
@@ -609,8 +812,14 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ==========================================
--- SERVER EVENTS (damage numbers, other players' skills, enemy attacks)
+-- SERVER EVENTS (damage numbers, other players' skills and rolls, enemy alerts and attacks)
 -- ==========================================
+dodgeRemote.OnClientEvent:Connect(function(character: Model)
+	if character and character ~= player.Character then
+		playRollPose(character)
+	end
+end)
+
 combatRemote.OnClientEvent:Connect(function(action: string, ...)
 	if action == "DamageDealt" then
 		local targetModel: Model, damage: number, isCrit: boolean = ...
@@ -626,6 +835,11 @@ combatRemote.OnClientEvent:Connect(function(action: string, ...)
 		local enemyModel: Model, kind: string, center: Vector3, radius: number, windup: number = ...
 		if enemyModel then
 			playEnemyAttack(enemyModel, kind, center, radius, windup)
+		end
+	elseif action == "EnemyAlert" then
+		local enemyModel: Model, duration: number = ...
+		if enemyModel then
+			playEnemyAlert(enemyModel, duration)
 		end
 	end
 end)

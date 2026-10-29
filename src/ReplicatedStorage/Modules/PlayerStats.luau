@@ -18,6 +18,12 @@ PlayerStats.BASE_MAX_HEALTH = 100
 PlayerStats.MAX_HEALTH_PER_LEVEL = 12
 PlayerStats.DAMAGE_PER_LEVEL = 2
 
+-- Dodge roll (Space / mobile Dodge button). Jumping is turned off, the roll replaces it
+PlayerStats.DODGE_COOLDOWN = 1 -- Seconds between rolls (AttackSpeed doesn't change it)
+PlayerStats.DODGE_DURATION = 0.35 -- Seconds the roll pushes the character
+PlayerStats.DODGE_DISTANCE = 13 -- Studs covered by one roll
+PlayerStats.DODGE_INVULNERABLE_TIME = 0.4 -- Enemy hits miss for this long after the server gets the roll
+
 -- EXP needed to go from `level` to `level + 1`
 function PlayerStats.expToNext(level: number): number
 	return 60 + level * 40
