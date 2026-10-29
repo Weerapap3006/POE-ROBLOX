@@ -91,6 +91,7 @@
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-29]
+   - .gitignore: ไม่เอา settings ส่วนตัวของ Claude Code (.claude/settings.local.json) ขึ้น git
    - README.md: เขียนใหม่เป็นคู่มือเพื่อน (ลง Git/VS Code/Rojo 7.7.1, clone, ขั้นตอนทุกวัน,
      กฎกันทับงาน, ปัญหาที่เจอบ่อย)
    - Git: เริ่มใช้ repo https://github.com/Weerapap3006/POE-ROBLOX (branch main)
