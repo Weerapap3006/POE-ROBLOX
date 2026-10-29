@@ -5,7 +5,10 @@
 - **โค้ด** (ทุกอย่างในโฟลเดอร์ `src/`) เก็บใน GitHub repo นี้ แก้ใน VS Code แล้วให้ Rojo sync เข้า Studio
 - **แมพ / โมเดล / StarterCharacter** อยู่ใน Team Create แก้ใน Studio ได้ตามปกติ
 
-โครงสร้างเกมทั้งหมด, ไฟล์ไหนแก้อะไร และบันทึกการแก้ไข ดูได้ที่ [`src/ReplicatedStorage/_ARCHITECTURE.luau`](src/ReplicatedStorage/_ARCHITECTURE.luau)
+โน้ตโครงสร้างเกม, ไฟล์ไหนแก้อะไร และบันทึกการแก้ไข **แยกคนละไฟล์** (จด CHANGELOG ในของตัวเอง ห้ามแก้ของอีกคน):
+
+- **DON** (chwwy) → [`src/ReplicatedStorage/_ARCHITECTURE DON.luau`](src/ReplicatedStorage/_ARCHITECTURE%20DON.luau)
+- **WEE** (Weerapap3006) → [`src/ReplicatedStorage/_ARCHITECTURE WEE.luau`](src/ReplicatedStorage/_ARCHITECTURE%20WEE.luau)
 
 อธิบายแต่ละระบบแบบละเอียด (หน้าที่ของแต่ละสคริปต์, flow การต่อสู้ Client ↔ Server) ดูที่ [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
@@ -104,7 +107,7 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 2. เปิด Rojo: `rojo serve` (ปล่อย terminal นี้รันค้างไว้)
 3. ใน Studio: **File → Open from File** → เปิด `game.rbxl` → **Plugins → Rojo → Connect**
 4. แก้โค้ดใน VS Code → เซฟ (Rojo ส่งเข้า Studio ทันที) → กด Play ทดสอบ
-5. จดลง CHANGELOG ในโน้ตของตัวเองว่าแก้อะไร
+5. จดลง CHANGELOG ในโน้ตของตัวเอง (`_ARCHITECTURE DON` หรือ `_ARCHITECTURE WEE`) ว่าแก้อะไร
 6. เสร็จแต่ละเรื่อง ส่งขึ้น GitHub ทันที (อย่าเก็บไว้ข้ามวัน):
 
    ```powershell
@@ -134,7 +137,7 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 | 🗺️ แมพ → แก้ใน **Roblox Studio** (อยู่ใน Team Create, ไม่ขึ้น GitHub) | 💻 โค้ด → แก้ใน **VS Code** แล้ว push ขึ้น **GitHub** |
 |---|---|
-| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `CombatServer`, `CombatClient`, `CameraScript`, `_ARCHITECTURE` |
+| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `CombatServer`, `CombatClient`, `CameraScript`, `_ARCHITECTURE DON`, `_ARCHITECTURE WEE` |
 | `StarterPlayer.StarterCharacter` | ถ้าไปแก้สคริปต์พวกนี้ใน Studio จะ**โดน Rojo เขียนทับ**ตอนใครก็ตามกด Connect หรือเซฟไฟล์นั้น |
 | Lighting, Teams, SoundService, หน้าตา UI ใน StarterGui | ลบใน Studio → Rojo สร้างกลับมา, เปลี่ยนชื่อ → ได้ตัวซ้ำ 2 ตัว |
 
@@ -147,7 +150,7 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 - **Part / Model / Terrain / แสง / เสียง / หน้าตา UI** → สร้างใน Studio
 - ข้อยกเว้น: LocalScript `Animate` ใน TrainingDummy และ StarterCharacter เป็นสคริปต์ท่าเดินที่ติดมากับหุ่น R15 ปล่อยไว้ในโมเดลได้
 
-คนแต่งแมพต้องอ่าน **"สิ่งที่โค้ดต้องการจากแมพ"** ในหัวข้อ 3 ของ [`_ARCHITECTURE.luau`](src/ReplicatedStorage/_ARCHITECTURE.luau) ด้วย เช่น ศัตรูต้องมี Humanoid กับ HumanoidRootPart, StarterCharacter ต้องเป็น R15 ถ้าทำข้อพวกนี้หลุด โค้ดจะพังโดยไม่ขึ้น error
+คนแต่งแมพต้องอ่าน **"สิ่งที่โค้ดต้องการจากแมพ"** ในหัวข้อ 3 ของ [`_ARCHITECTURE DON.luau`](src/ReplicatedStorage/_ARCHITECTURE%20DON.luau) ด้วย เช่น ศัตรูต้องมี Humanoid กับ HumanoidRootPart, StarterCharacter ต้องเป็น R15 ถ้าทำข้อพวกนี้หลุด โค้ดจะพังโดยไม่ขึ้น error
 
 **กันทับงานกัน**
 
