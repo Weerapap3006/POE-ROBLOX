@@ -74,6 +74,7 @@ type EnemyState = {
 local EnemyService = {}
 
 local enemies: { [Model]: EnemyState } = {}
+local spawnPointsCache: { SpawnPoint } = {}
 local random = Random.new()
 local healthMultiplier = 1 -- From the player count, see rescaleEnemyHealth
 
@@ -316,7 +317,7 @@ local function spawnEnemy(point: SpawnPoint)
 	end)
 end
 
-function onDeath(state: EnemyState, point: SpawnPoint)
+function onDeath(state: EnemyState, _point: SpawnPoint)
 	if state.Dead then
 		return
 	end
@@ -334,10 +335,10 @@ function onDeath(state: EnemyState, point: SpawnPoint)
 	Loot.rollDrops(data.Drops, findGround(state.Root.Position))
 
 	if data.IsBoss then
-		PlayerData.notify(nil, ("เคลียร์ด่าน! ปราบ %s สำเร็จ"):format(data.DisplayName), BOSS_CLEAR_COLOR)
+		PlayerData.notify(nil, ("เคลียร์ด่าน! ปราบ %s สำเร็จ (เข้าวาร์ปเพื่อกลับ Lobby)"):format(data.DisplayName), BOSS_CLEAR_COLOR)
 	end
 
-	-- Fade the body out, then remove it
+	-- Fade the body out, then remove it (no auto-respawn; enemies respawn only when resetting the dungeon)
 	local outline = model:FindFirstChildOfClass("Highlight")
 	if outline then
 		outline:Destroy()
@@ -350,10 +351,6 @@ function onDeath(state: EnemyState, point: SpawnPoint)
 	task.delay(1, function()
 		enemies[model] = nil
 		model:Destroy()
-	end)
-
-	task.delay(data.RespawnTime, function()
-		spawnEnemy(point)
 	end)
 end
 
@@ -501,7 +498,7 @@ local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastPar
 	local humanoid = state.Humanoid
 	local root = state.Root
 
-	-- Fell off the map / root got destroyed: count it as dead so it respawns
+	-- Fell off the map / root got destroyed: count it as dead
 	if not root:IsDescendantOf(workspace) then
 		humanoid.Health = 0
 		return
@@ -566,7 +563,81 @@ local function rescaleEnemyHealth(playerCount: number)
 end
 
 -- ==========================================
--- 6. PUBLIC API
+-- 6. DUNGEON RESET & PORTALS
+-- ==========================================
+function EnemyService.resetDungeon()
+	-- Remove all managed enemies currently alive or fading out
+	for model, state in pairs(enemies) do
+		state.Dead = true
+		enemies[model] = nil
+		if model and model.Parent then
+			model:Destroy()
+		end
+	end
+
+	if #spawnPointsCache == 0 then
+		spawnPointsCache = collectSpawnPoints()
+	end
+	for _, point in ipairs(spawnPointsCache) do
+		spawnEnemy(point)
+	end
+end
+
+local function setupDungeonPortals()
+	local dungeonMap = workspace:FindFirstChild("DungeonMap")
+	if not dungeonMap then
+		return
+	end
+
+	local entrancePad = dungeonMap:FindFirstChild("DungeonEntranceSpawn") :: BasePart?
+	local lobbySpawn = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+
+	local enterPortal = dungeonMap:FindFirstChild("LobbyDungeonPortal")
+	local enterPrompt = enterPortal and enterPortal:FindFirstChild("PortalPrompt", true) :: ProximityPrompt?
+	if enterPrompt then
+		enterPrompt.Triggered:Connect(function(player: Player)
+			local character = player.Character
+			local root = getAliveRoot(character)
+			if not character or not root then
+				return
+			end
+
+			EnemyService.resetDungeon()
+			local targetPos = if entrancePad then entrancePad.Position + Vector3.new(0, 4, 0) else Vector3.new(250, 4, 0)
+			character:PivotTo(CFrame.lookAt(targetPos, targetPos + Vector3.new(0, 0, -10)))
+
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+			PlayerData.notify(player, "เข้าสู่ด่าน! มอนสเตอร์ทั้งหมดถูกรีเซ็ตใหม่", Color3.fromRGB(110, 215, 255))
+		end)
+	end
+
+	local returnPortal = dungeonMap:FindFirstChild("DungeonReturnPortal")
+	local returnPrompt = returnPortal and returnPortal:FindFirstChild("PortalPrompt", true) :: ProximityPrompt?
+	if returnPrompt then
+		returnPrompt.Triggered:Connect(function(player: Player)
+			local character = player.Character
+			local root = getAliveRoot(character)
+			if not character or not root then
+				return
+			end
+
+			local targetPos = if lobbySpawn then lobbySpawn.Position + Vector3.new(0, 4, 0) else Vector3.new(-40, 4, 32)
+			character:PivotTo(CFrame.new(targetPos))
+
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+			PlayerData.notify(player, "กลับมาที่โซนปลอดภัย (Lobby)", Color3.fromRGB(140, 240, 160))
+		end)
+	end
+end
+
+-- ==========================================
+-- 7. PUBLIC API
 -- ==========================================
 -- Called by CombatServer. Returns false if the model isn't an enemy managed here (e.g. TrainingDummy)
 function EnemyService.applyDamage(model: Model, amount: number, attacker: Player): boolean
@@ -596,9 +667,12 @@ function EnemyService.start()
 		rescaleEnemyHealth(countPlayers(leaving)) -- The leaving player is still in GetPlayers() here
 	end)
 
-	for _, point in ipairs(collectSpawnPoints()) do
+	spawnPointsCache = collectSpawnPoints()
+	for _, point in ipairs(spawnPointsCache) do
 		spawnEnemy(point)
 	end
+
+	setupDungeonPortals()
 
 	task.spawn(function()
 		while true do
