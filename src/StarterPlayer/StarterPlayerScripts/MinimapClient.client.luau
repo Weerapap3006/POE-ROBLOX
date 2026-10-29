@@ -1,5 +1,5 @@
 -- ==========================================
--- MINIMAP CLIENT (Corner Radar + M Overlay Map with Enemies, Boss, Portals & Walls + Settings)
+-- MINIMAP CLIENT (Corner Radar + M Overlay Map with Enemies, Boss, Portals & Walls + Categorized Settings)
 -- Path: StarterPlayer.StarterPlayerScripts.MinimapClient
 -- ==========================================
 local Players = game:GetService("Players")
@@ -195,26 +195,27 @@ end
 clickToggle.Activated:Connect(toggleOverlayMode)
 
 -- ==========================================
--- SETTINGS WINDOW
+-- CATEGORIZED SETTINGS WINDOW (หน้าต่างตั้งค่าแบ่งหมวดหมู่)
 -- ==========================================
 local settingsWindow = Ui.new("Frame", {
 	Name = "SettingsWindow",
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.5),
-	Size = UDim2.fromOffset(340, 360),
+	Size = UDim2.fromOffset(400, 420),
 	BackgroundColor3 = Ui.Colors.Panel,
-	BackgroundTransparency = 0.05,
+	BackgroundTransparency = 0.04,
 	Visible = false,
 	Active = true,
 	ZIndex = 30,
 	Parent = gui,
 }, { Ui.corner(12), Ui.stroke(Ui.Colors.Accent, 2) })
 
+-- Header
 Ui.text({
 	Position = UDim2.fromOffset(16, 12),
-	Size = UDim2.new(1, -70, 0, 30),
-	Text = "⚙️ การตั้งค่าเกม & แผนที่",
-	TextSize = 20,
+	Size = UDim2.new(1, -70, 0, 28),
+	Text = "⚙️ การตั้งค่า (Settings) [P]",
+	TextSize = 19,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	ZIndex = 31,
 	Parent = settingsWindow,
@@ -222,7 +223,7 @@ Ui.text({
 
 local closeSettingsBtn = Ui.button({
 	AnchorPoint = Vector2.new(1, 0),
-	Position = UDim2.new(1, -12, 0, 12),
+	Position = UDim2.new(1, -12, 0, 10),
 	Size = UDim2.fromOffset(32, 32),
 	Text = "X",
 	TextSize = 16,
@@ -230,160 +231,285 @@ local closeSettingsBtn = Ui.button({
 	Parent = settingsWindow,
 }, { Ui.corner(6) })
 
--- 1. ปุ่มลัดวาร์ปกลับ Lobby
-local warpLobbyBtn = Ui.button({
-	Position = UDim2.fromOffset(16, 56),
-	Size = UDim2.new(1, -32, 0, 44),
-	BackgroundColor3 = Color3.fromRGB(50, 140, 95),
-	Text = "🏠 วาร์ปกลับ Lobby ทันที",
-	TextSize = 16,
+-- แถบเลือกหมวดหมู่ (Category Tabs)
+local tabBar = Ui.new("Frame", {
+	Name = "CategoryTabBar",
+	Position = UDim2.fromOffset(16, 48),
+	Size = UDim2.new(1, -32, 0, 36),
+	BackgroundTransparency = 1,
 	ZIndex = 31,
 	Parent = settingsWindow,
-}, { Ui.corner(8), Ui.stroke(Color3.fromRGB(90, 220, 150), 1.5) })
+})
 
-warpLobbyBtn.Activated:Connect(function()
-	teleportRemote:FireServer("Lobby")
-	settingsWindow.Visible = false
-end)
-
--- 2. สลับโหมดแผนที่
-local toggleMapBtn = Ui.button({
-	Position = UDim2.fromOffset(16, 110),
-	Size = UDim2.new(1, -32, 0, 38),
-	BackgroundColor3 = Ui.Colors.PanelLight,
-	Text = "🗺️ สลับโหมดแผนที่ (มุมจอ / กลางจอ [M])",
+local tabMapBtn = Ui.button({
+	Position = UDim2.fromScale(0, 0),
+	Size = UDim2.new(0.32, 0, 1, 0),
+	Text = "🗺️ แผนที่",
 	TextSize = 14,
+	ZIndex = 32,
+	Parent = tabBar,
+}, { Ui.corner(8) })
+
+local tabGeneralBtn = Ui.button({
+	Position = UDim2.fromScale(0.34, 0),
+	Size = UDim2.new(0.32, 0, 1, 0),
+	Text = "🏠 ทั่วไป / วาร์ป",
+	TextSize = 14,
+	ZIndex = 32,
+	Parent = tabBar,
+}, { Ui.corner(8) })
+
+local tabOtherBtn = Ui.button({
+	Position = UDim2.fromScale(0.68, 0),
+	Size = UDim2.new(0.32, 0, 1, 0),
+	Text = "🔧 อื่นๆ",
+	TextSize = 14,
+	ZIndex = 32,
+	Parent = tabBar,
+}, { Ui.corner(8) })
+
+-- เส้นคั่นใต้แถบหมวดหมู่
+Ui.new("Frame", {
+	Position = UDim2.fromOffset(16, 92),
+	Size = UDim2.new(1, -32, 0, 1),
+	BackgroundColor3 = Ui.Colors.Stroke,
+	BackgroundTransparency = 0.4,
+	BorderSizePixel = 0,
 	ZIndex = 31,
 	Parent = settingsWindow,
+})
+
+-- เนื้อหาแต่ละหมวดหมู่ (Category Pages)
+local contentAreaPos = UDim2.fromOffset(16, 102)
+local contentAreaSize = UDim2.new(1, -32, 1, -116)
+
+local mapPage = Ui.new("Frame", {
+	Name = "MapCategoryPage",
+	Position = contentAreaPos,
+	Size = contentAreaSize,
+	BackgroundTransparency = 1,
+	Visible = true,
+	ZIndex = 31,
+	Parent = settingsWindow,
+})
+
+local generalPage = Ui.new("Frame", {
+	Name = "GeneralCategoryPage",
+	Position = contentAreaPos,
+	Size = contentAreaSize,
+	BackgroundTransparency = 1,
+	Visible = false,
+	ZIndex = 31,
+	Parent = settingsWindow,
+})
+
+local otherPage = Ui.new("Frame", {
+	Name = "OtherCategoryPage",
+	Position = contentAreaPos,
+	Size = contentAreaSize,
+	BackgroundTransparency = 1,
+	Visible = false,
+	ZIndex = 31,
+	Parent = settingsWindow,
+})
+
+-- ==========================================
+-- หมวดที่ 1: 🗺️ แผนที่ (MAP CATEGORY)
+-- ==========================================
+local toggleMapBtn = Ui.button({
+	Position = UDim2.fromOffset(0, 0),
+	Size = UDim2.new(1, 0, 0, 36),
+	BackgroundColor3 = Ui.Colors.PanelLight,
+	Text = "🗺️ สลับโหมดแผนที่ (มุมขวาบน / กลางจอ [M])",
+	TextSize = 14,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(8) })
 
 toggleMapBtn.Activated:Connect(function()
 	toggleOverlayMode()
 end)
 
--- 3. ปรับขนาดแผนที่มุมจอ
+-- 1.1 ขนาดมินิแมพมุมจอ
 local sizeLabel = Ui.text({
-	Position = UDim2.fromOffset(16, 158),
-	Size = UDim2.new(1, -32, 0, 20),
-	Text = ("ขนาดมินิแมพ: %d px"):format(cornerMapSize),
-	TextSize = 14,
+	Position = UDim2.fromOffset(0, 44),
+	Size = UDim2.new(1, 0, 0, 20),
+	Text = ("ขนาดมินิแมพมุมจอ: %d px"):format(cornerMapSize),
+	TextSize = 13,
 	TextColor3 = Ui.Colors.TextDim,
 	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 })
 
 local btnSmall = Ui.button({
-	Position = UDim2.fromOffset(16, 184),
-	Size = UDim2.new(0.31, 0, 0, 32),
+	Position = UDim2.fromOffset(0, 66),
+	Size = UDim2.new(0.31, 0, 0, 30),
 	Text = "เล็ก (150)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 local btnMed = Ui.button({
-	Position = UDim2.new(0.35, 0, 0, 184),
-	Size = UDim2.new(0.31, 0, 0, 32),
+	Position = UDim2.new(0.345, 0, 0, 66),
+	Size = UDim2.new(0.31, 0, 0, 30),
 	Text = "กลาง (185)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 local btnBig = Ui.button({
-	Position = UDim2.new(0.69, 0, 0, 184),
-	Size = UDim2.new(0.31, 0, 0, 32),
+	Position = UDim2.new(0.69, 0, 0, 66),
+	Size = UDim2.new(0.31, 0, 0, 30),
 	Text = "ใหญ่ (230)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 local function setCornerSize(sz: number)
 	cornerMapSize = sz
-	sizeLabel.Text = ("ขนาดมินิแมพ: %d px"):format(cornerMapSize)
+	sizeLabel.Text = ("ขนาดมินิแมพมุมจอ: %d px"):format(cornerMapSize)
 	applyMapMode()
 end
 btnSmall.Activated:Connect(function() setCornerSize(150) end)
 btnMed.Activated:Connect(function() setCornerSize(185) end)
 btnBig.Activated:Connect(function() setCornerSize(230) end)
 
--- 4. ปรับระยะซูมแผนที่
-local zoomLabel = Ui.text({
-	Position = UDim2.fromOffset(16, 226),
-	Size = UDim2.new(1, -32, 0, 20),
-	Text = ("ระยะเรดาร์: %d studs"):format(cornerViewRadius),
-	TextSize = 14,
+-- 1.2 ขนาดแผนที่กลางจอตอนกด M
+local overlaySizeLabel = Ui.text({
+	Position = UDim2.fromOffset(0, 104),
+	Size = UDim2.new(1, 0, 0, 20),
+	Text = ("ขนาดแผนที่กลางจอ [M]: %d px"):format(overlayMapSize),
+	TextSize = 13,
 	TextColor3 = Ui.Colors.TextDim,
 	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
+})
+
+local btnOvSmall = Ui.button({
+	Position = UDim2.fromOffset(0, 126),
+	Size = UDim2.new(0.31, 0, 0, 30),
+	Text = "เล็ก (380)",
+	TextSize = 13,
+	ZIndex = 32,
+	Parent = mapPage,
+}, { Ui.corner(6) })
+
+local btnOvMed = Ui.button({
+	Position = UDim2.new(0.345, 0, 0, 126),
+	Size = UDim2.new(0.31, 0, 0, 30),
+	Text = "กลาง (460)",
+	TextSize = 13,
+	ZIndex = 32,
+	Parent = mapPage,
+}, { Ui.corner(6) })
+
+local btnOvBig = Ui.button({
+	Position = UDim2.new(0.69, 0, 0, 126),
+	Size = UDim2.new(0.31, 0, 0, 30),
+	Text = "ใหญ่ (560)",
+	TextSize = 13,
+	ZIndex = 32,
+	Parent = mapPage,
+}, { Ui.corner(6) })
+
+local function setOverlaySize(sz: number)
+	overlayMapSize = sz
+	overlaySizeLabel.Text = ("ขนาดแผนที่กลางจอ [M]: %d px"):format(overlayMapSize)
+	applyMapMode()
+end
+btnOvSmall.Activated:Connect(function() setOverlaySize(380) end)
+btnOvMed.Activated:Connect(function() setOverlaySize(460) end)
+btnOvBig.Activated:Connect(function() setOverlaySize(560) end)
+
+-- 1.3 ระยะเรดาร์ (Zoom)
+local zoomLabel = Ui.text({
+	Position = UDim2.fromOffset(0, 164),
+	Size = UDim2.new(1, 0, 0, 20),
+	Text = ("ระยะเรดาร์มินิแมพ: %d studs"):format(cornerViewRadius),
+	TextSize = 13,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 32,
+	Parent = mapPage,
 })
 
 local btnZoomNear = Ui.button({
-	Position = UDim2.fromOffset(16, 252),
-	Size = UDim2.new(0.31, 0, 0, 32),
+	Position = UDim2.fromOffset(0, 186),
+	Size = UDim2.new(0.31, 0, 0, 30),
 	Text = "ใกล้ (90)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 local btnZoomMed = Ui.button({
-	Position = UDim2.new(0.35, 0, 0, 252),
-	Size = UDim2.new(0.31, 0, 0, 32),
+	Position = UDim2.new(0.345, 0, 0, 186),
+	Size = UDim2.new(0.31, 0, 0, 30),
 	Text = "ปกติ (130)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 local btnZoomFar = Ui.button({
-	Position = UDim2.new(0.69, 0, 0, 252),
-	Size = UDim2.new(0.31, 0, 0, 32),
+	Position = UDim2.new(0.69, 0, 0, 186),
+	Size = UDim2.new(0.31, 0, 0, 30),
 	Text = "ไกล (200)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 local function setZoomRadius(rad: number)
 	cornerViewRadius = rad
-	zoomLabel.Text = ("ระยะเรดาร์: %d studs"):format(cornerViewRadius)
+	zoomLabel.Text = ("ระยะเรดาร์มินิแมพ: %d studs"):format(cornerViewRadius)
 end
 btnZoomNear.Activated:Connect(function() setZoomRadius(90) end)
 btnZoomMed.Activated:Connect(function() setZoomRadius(130) end)
 btnZoomFar.Activated:Connect(function() setZoomRadius(200) end)
 
--- 5. สลับความโปร่งใส
-local transLabel = Ui.text({
-	Position = UDim2.fromOffset(16, 294),
-	Size = UDim2.new(1, -32, 0, 20),
-	Text = "ความโปร่งใสพื้นหลัง:",
-	TextSize = 14,
+-- 1.4 ความโปร่งใสพื้นหลัง
+Ui.text({
+	Position = UDim2.fromOffset(0, 224),
+	Size = UDim2.new(1, 0, 0, 20),
+	Text = "ความโปร่งใสพื้นหลังแผนที่:",
+	TextSize = 13,
 	TextColor3 = Ui.Colors.TextDim,
 	TextXAlignment = Enum.TextXAlignment.Left,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 })
 
 local btnTransSolid = Ui.button({
-	Position = UDim2.fromOffset(16, 316),
-	Size = UDim2.new(0.48, 0, 0, 32),
+	Position = UDim2.fromOffset(0, 246),
+	Size = UDim2.new(0.31, 0, 0, 30),
 	Text = "ทึบ (ชัดเจน)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
+}, { Ui.corner(6) })
+
+local btnTransNormal = Ui.button({
+	Position = UDim2.new(0.345, 0, 0, 246),
+	Size = UDim2.new(0.31, 0, 0, 30),
+	Text = "ปกติ",
+	TextSize = 13,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 local btnTransGlass = Ui.button({
-	Position = UDim2.new(0.52, 0, 0, 316),
-	Size = UDim2.new(0.48, 0, 0, 32),
-	Text = "โปร่งใส (มองทะลุ)",
+	Position = UDim2.new(0.69, 0, 0, 246),
+	Size = UDim2.new(0.31, 0, 0, 30),
+	Text = "ใส (มองทะลุ)",
 	TextSize = 13,
-	ZIndex = 31,
-	Parent = settingsWindow,
+	ZIndex = 32,
+	Parent = mapPage,
 }, { Ui.corner(6) })
 
 btnTransSolid.Activated:Connect(function()
@@ -392,11 +518,132 @@ btnTransSolid.Activated:Connect(function()
 	applyMapMode()
 end)
 
+btnTransNormal.Activated:Connect(function()
+	cornerBgTransparency = 0.2
+	overlayBgTransparency = 0.45
+	applyMapMode()
+end)
+
 btnTransGlass.Activated:Connect(function()
 	cornerBgTransparency = 0.5
 	overlayBgTransparency = 0.65
 	applyMapMode()
 end)
+
+-- ==========================================
+-- หมวดที่ 2: 🏠 ทั่วไป / วาร์ป (GENERAL CATEGORY)
+-- ==========================================
+Ui.text({
+	Position = UDim2.fromOffset(0, 0),
+	Size = UDim2.new(1, 0, 0, 22),
+	Text = "คำสั่งด่วนและการเดินทาง:",
+	TextSize = 14,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 32,
+	Parent = generalPage,
+})
+
+local warpLobbyBtn = Ui.button({
+	Position = UDim2.fromOffset(0, 28),
+	Size = UDim2.new(1, 0, 0, 46),
+	BackgroundColor3 = Color3.fromRGB(50, 140, 95),
+	Text = "🏠 วาร์ปกลับโซนปลอดภัย (Lobby) ทันที",
+	TextSize = 16,
+	ZIndex = 32,
+	Parent = generalPage,
+}, { Ui.corner(8), Ui.stroke(Color3.fromRGB(90, 220, 150), 1.5) })
+
+warpLobbyBtn.Activated:Connect(function()
+	teleportRemote:FireServer("Lobby")
+	settingsWindow.Visible = false
+end)
+
+local keybindCard = Ui.new("Frame", {
+	Position = UDim2.fromOffset(0, 90),
+	Size = UDim2.new(1, 0, 0, 180),
+	BackgroundColor3 = Ui.Colors.PanelLight,
+	BackgroundTransparency = 0.2,
+	ZIndex = 32,
+	Parent = generalPage,
+}, { Ui.corner(8), Ui.stroke(Ui.Colors.Stroke, 1) })
+
+Ui.text({
+	Position = UDim2.fromOffset(12, 10),
+	Size = UDim2.new(1, -24, 0, 22),
+	Text = "⌨️ ปุ่มลัดในเกม (Shortcuts)",
+	TextSize = 15,
+	TextColor3 = Ui.Colors.Accent,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 33,
+	Parent = keybindCard,
+})
+
+Ui.text({
+	Position = UDim2.fromOffset(12, 38),
+	Size = UDim2.new(1, -24, 1, -46),
+	Text = "• ปุ่ม [B] : เปิด / ปิด กระเป๋าไอเทม\n• ปุ่ม [M] : สลับแผนที่มุมจอ / ขยายกลางจอ\n• ปุ่ม [P] : เปิด / ปิด หน้าต่างตั้งค่า\n• คลิกซ้าย (ค้างได้) : โจมตีปกติ (ฟันดาบ)\n• คลิกขวา หรือ [Q] : สกิลหมุนฟันรอบตัว\n• ลูกกลิ้งเมาส์ : ซูมกล้องเข้า - ออก",
+	TextSize = 14,
+	TextColor3 = Ui.Colors.Text,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	ZIndex = 33,
+	Parent = keybindCard,
+})
+
+-- ==========================================
+-- หมวดที่ 3: 🔧 อื่นๆ (OTHERS CATEGORY - เผื่อเพิ่มในอนาคต)
+-- ==========================================
+local otherCard = Ui.new("Frame", {
+	Position = UDim2.fromOffset(0, 8),
+	Size = UDim2.new(1, 0, 0, 260),
+	BackgroundColor3 = Ui.Colors.PanelLight,
+	BackgroundTransparency = 0.25,
+	ZIndex = 32,
+	Parent = otherPage,
+}, { Ui.corner(8), Ui.stroke(Ui.Colors.Stroke, 1) })
+
+Ui.text({
+	Position = UDim2.fromOffset(14, 14),
+	Size = UDim2.new(1, -28, 0, 24),
+	Text = "🔧 หมวดตั้งค่าอื่นๆ (เตรียมไว้สำหรับอัปเดตถัดไป)",
+	TextSize = 15,
+	TextColor3 = Ui.Colors.Accent,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 33,
+	Parent = otherCard,
+})
+
+Ui.text({
+	Position = UDim2.fromOffset(14, 46),
+	Size = UDim2.new(1, -28, 1, -56),
+	Text = "หมวดหมู่นี้เตรียมโครงสร้างไว้สำหรับใส่การตั้งค่าเพิ่มเติมในอนาคต เช่น:\n\n• 🔊 ปรับระดับเสียงเพลงประกอบ (BGM) และเสียงฟันดาบ (SFX)\n• ✨ เปิด / ปิด ตัวเลขดาเมจเด้ง (Damage Numbers)\n• 🎨 เปิด / ปิด เส้นขอบการ์ตูน (Cel-Shade Outline) เพื่อลดแลค\n• 📷 ตั้งค่าความไวกล้องและการสั่นหน้าจอ (Screen Shake)",
+	TextSize = 14,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	TextWrapped = true,
+	ZIndex = 33,
+	Parent = otherCard,
+})
+
+-- ฟังก์ชันสลับหมวดหมู่ (Switch Category Tab)
+local function selectCategory(category: string)
+	mapPage.Visible = (category == "Map")
+	generalPage.Visible = (category == "General")
+	otherPage.Visible = (category == "Other")
+
+	tabMapBtn.BackgroundColor3 = if category == "Map" then Ui.Colors.Accent else Ui.Colors.PanelLight
+	tabGeneralBtn.BackgroundColor3 = if category == "General" then Ui.Colors.Accent else Ui.Colors.PanelLight
+	tabOtherBtn.BackgroundColor3 = if category == "Other" then Ui.Colors.Accent else Ui.Colors.PanelLight
+end
+
+tabMapBtn.Activated:Connect(function() selectCategory("Map") end)
+tabGeneralBtn.Activated:Connect(function() selectCategory("General") end)
+tabOtherBtn.Activated:Connect(function() selectCategory("Other") end)
+
+-- เริ่มต้นที่หมวดหมู่แผนที่
+selectCategory("Map")
 
 local function toggleSettings()
 	settingsWindow.Visible = not settingsWindow.Visible

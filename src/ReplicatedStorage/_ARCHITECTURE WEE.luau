@@ -14,7 +14,8 @@
    - ReplicatedStorage (โซนกลาง: เห็นทั้ง Client และ Server)
      ├── _ARCHITECTURE WEE (ModuleScript) : ไฟล์โน้ตสรุปโครงสร้างและ CHANGELOG ของ WEE
      ├── Remotes
-     │   └── CombatRemote (RemoteEvent) : ท่อส่งข้อมูลการโจมตีและผลลัพธ์ดาเมจ
+     │   ├── CombatRemote (RemoteEvent) : ท่อส่งข้อมูลการโจมตีและผลลัพธ์ดาเมจ
+     │   └── TeleportRemote (RemoteEvent) : ท่อส่งคำขอวาร์ปกลับ Lobby จากหน้าต่างตั้งค่า
      └── Modules
          └── SkillData (ModuleScript) : ตารางเก็บค่า Cooldown, Damage, Crit, HitboxSize
 
@@ -26,28 +27,33 @@
      └── StarterPlayerScripts
          ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมเข้าออกสมูท
          ├── CombatClient (LocalScript) : หันหน้าตามเมาส์, รับคลิกซ้าย, เล่น VFX, เลขดาเมจเด้ง
-         └── MinimapClient (LocalScript) : มินิแมพมุมขวาบน + กด M ขยายกลางจอแบบ PoE
+         └── MinimapClient (LocalScript) : มินิแมพมุมขวาบน + กด M ขยายกลางจอ + ปุ่มตั้งค่า ⚙️ (กด P)
 
 --------------------------------------------------------------------------------
 2. อยากแก้ค่าอะไร ให้ไปที่ไฟล์ไหน? (QUICK EDIT GUIDE):
    - แก้มุมกล้อง / ความเร็วกล้อง / ระยะซูม  --> StarterPlayerScripts.CameraScript
    - แก้ความแรงสกิล / คูลดาวน์ / ระยะฟัน   --> ReplicatedStorage.Modules.SkillData
    - แก้สีคลื่นดาบ / ขนาดตัวเลขดาเมจเด้ง   --> StarterPlayerScripts.CombatClient
-   - แก้ขนาดมินิแมพ / สีจุด / ความใสตอนกด M --> StarterPlayerScripts.MinimapClient
+   - แก้ขนาดมินิแมพ / สีจุด / หน้าต่างตั้งค่า  --> StarterPlayerScripts.MinimapClient
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox --> ServerScriptService.CombatServer
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน    --> StarterPlayer.StarterCharacter
 
 --------------------------------------------------------------------------------
 3. บันทึกการแก้ไข (CHANGELOG ของ WEE) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - MinimapClient / TeleportRemote / EnemyService:
+     + เพิ่มปุ่มตั้งค่า ⚙️ ข้างมินิแมพมุมขวาบน (หรือกดปุ่มลัด P)
+     + จัดระเบียบหน้าต่างตั้งค่า (SettingsWindow) ออกเป็น 3 หมวดหมู่ (Tabs):
+       1. หมวด "🗺️ แผนที่": สลับโหมดมุมจอ/กลางจอ, ปรับขนาดมินิแมพมุมจอ, ปรับขนาดแผนที่กลางจอ [M], ปรับระยะเรดาร์, ปรับความโปร่งใสพื้นหลัง
+       2. หมวด "🏠 ทั่วไป / วาร์ป": ปุ่มวาร์ปกลับโซนปลอดภัย (Lobby) ทันทีพร้อมรีเลือดเต็ม (ผ่าน TeleportRemote) และสรุปปุ่มลัดในเกม
+       3. หมวด "🔧 อื่นๆ": เตรียมโครงสร้างหน้าหมวดหมู่ไว้สำหรับใส่การตั้งค่าเพิ่มเติมในอนาคต
    - InventoryClient / MinimapClient:
      + เปลี่ยนปุ่มเปิดกระเป๋าเป็น B (แทน I ที่ชนกับปุ่มซูมกล้อง Roblox) และปุ่มขยายแผนที่เป็น M (แทน Tab ที่ชนกับ Leaderboard)
-     + เช็ก UserInputService:GetFocusedTextBox() == nil เพื่อให้กดปุ่ม B และ M ติดเสมอโดยไม่โดนระบบ Roblox บล็อก
+     + เช็ก UserInputService:GetFocusedTextBox() == nil เพื่อให้กดปุ่ม B, M, P ติดเสมอโดยไม่โดนระบบ Roblox บล็อก
    - MinimapClient (src/StarterPlayer/StarterPlayerScripts/MinimapClient.client.luau):
      + เพิ่มระบบมินิแมพมุมขวาบน และกดปุ่ม M (หรือคลิกที่แมพ) เพื่อสลับขยายเป็นแผนที่โปร่งใสกลางจอแบบ PoE
      + จุดตัวเราเป็นสีขาวพร้อมเข็มชี้ทิศหน้า, จุดมอนสเตอร์สีแดง, จุดบอสสีส้มทอง, ประตูวาร์ป และแท่งกำแพงด่าน
      + แสดงตัวนับจำนวนศัตรูที่เหลืออยู่ในด่านมุมขวาล่างของมินิแมพ
-     + รวมค่าตั้งค่า (ขนาด/ระยะมองเห็น/ความโปร่งใส/สีจุด) ไว้ที่หัวไฟล์ปรับแก้ได้ทันที
    [2026-10-29]
    - EnemyService + DungeonMap:
      + ปรับให้มอนสเตอร์ในด่านตายแล้วตายเลย (ไม่เกิดใหม่เองตามเวลา RespawnTime)
