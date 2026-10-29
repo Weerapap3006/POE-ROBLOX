@@ -1,5 +1,5 @@
 -- ==========================================
--- HUD CLIENT (Health / EXP bars, enemy health bars, boss bar, notifications, death screen)
+-- HUD CLIENT (Energy Shield / Health / Mana / EXP bars, enemy health bars, boss bar, notifications, death screen)
 -- Path: StarterPlayer.StarterPlayerScripts.HudClient
 -- ==========================================
 local Players = game:GetService("Players")
@@ -57,18 +57,19 @@ local function makeBar(parent: Instance, position: UDim2, size: UDim2, color: Co
 end
 
 -- ==========================================
--- 1. PLAYER HEALTH & EXP (PC: bottom-left / mobile: top-left, away from the thumbstick)
+-- 1. PLAYER ENERGY SHIELD, HEALTH, MANA & EXP (PC: bottom-left / mobile: top-left, away from the thumbstick)
 -- ==========================================
 local playerPanel = Ui.new("Frame", {
 	Name = "PlayerPanel",
 	AnchorPoint = if isTouchOnly then Vector2.new(0, 0) else Vector2.new(0, 1),
 	Position = if isTouchOnly then UDim2.fromOffset(12, 8) else UDim2.new(0, 16, 1, -16),
-	Size = UDim2.fromOffset(300, 60),
+	Size = UDim2.fromOffset(300, 68),
 	BackgroundTransparency = 1,
 	Parent = gui,
 })
 
 local levelBadge = Ui.text({
+	Position = UDim2.fromOffset(0, 4),
 	Size = UDim2.fromOffset(60, 60),
 	BackgroundTransparency = 0.15,
 	BackgroundColor3 = Ui.Colors.Panel,
@@ -78,9 +79,15 @@ local levelBadge = Ui.text({
 	Parent = playerPanel,
 }, { Ui.corner(30), Ui.stroke(Ui.Colors.Exp, 2) })
 
-local healthFill, healthText = makeBar(playerPanel, UDim2.fromOffset(68, 4), UDim2.fromOffset(232, 26), Ui.Colors.Health)
-local expFill, expText = makeBar(playerPanel, UDim2.fromOffset(68, 36), UDim2.fromOffset(232, 18), Ui.Colors.Exp)
-expText.TextSize = 12
+-- Energy shield bar only shows when gear gives energy shield
+local shieldFill, shieldText = makeBar(playerPanel, UDim2.fromOffset(68, 0), UDim2.fromOffset(232, 12), Ui.Colors.EnergyShield)
+local shieldBar = shieldFill.Parent :: Frame
+shieldText.TextSize = 10
+local healthFill, healthText = makeBar(playerPanel, UDim2.fromOffset(68, 14), UDim2.fromOffset(232, 24), Ui.Colors.Health)
+local manaFill, manaText = makeBar(playerPanel, UDim2.fromOffset(68, 40), UDim2.fromOffset(232, 14), Ui.Colors.Mana)
+manaText.TextSize = 11
+local expFill, expText = makeBar(playerPanel, UDim2.fromOffset(68, 56), UDim2.fromOffset(232, 12), Ui.Colors.Exp)
+expText.TextSize = 10
 
 local function updateHealth(humanoid: Humanoid)
 	local maxHealth = math.max(humanoid.MaxHealth, 1)
@@ -88,6 +95,33 @@ local function updateHealth(humanoid: Humanoid)
 	healthFill.Size = UDim2.fromScale(health / maxHealth, 1)
 	healthText.Text = string.format("%d / %d", math.ceil(health), math.floor(maxHealth))
 end
+
+-- Mana / energy shield come from player attributes set by the server (PlayerData = max, PlayerResources = current)
+local function updateMana()
+	local maxMana = math.max(player:GetAttribute("MaxMana") or 1, 1)
+	local mana = math.clamp(player:GetAttribute("Mana") or 0, 0, maxMana)
+	manaFill.Size = UDim2.fromScale(mana / maxMana, 1)
+	manaText.Text = string.format("%d / %d", mana, maxMana)
+end
+
+local function updateEnergyShield()
+	local maxShield = player:GetAttribute("MaxEnergyShield") or 0
+	shieldBar.Visible = maxShield > 0
+	if maxShield > 0 then
+		local shield = math.clamp(player:GetAttribute("EnergyShield") or 0, 0, maxShield)
+		shieldFill.Size = UDim2.fromScale(shield / maxShield, 1)
+		shieldText.Text = string.format("ES %d / %d", shield, maxShield)
+	end
+end
+
+for _, attributeName in ipairs({ "Mana", "MaxMana" }) do
+	player:GetAttributeChangedSignal(attributeName):Connect(updateMana)
+end
+for _, attributeName in ipairs({ "EnergyShield", "MaxEnergyShield" }) do
+	player:GetAttributeChangedSignal(attributeName):Connect(updateEnergyShield)
+end
+updateMana()
+updateEnergyShield()
 
 -- Level / EXP come from player attributes set by the server (PlayerData)
 local function updateExp()

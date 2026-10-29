@@ -333,11 +333,14 @@ end
 
 local function renderStats()
 	statsLabel.Text = string.format(
-		"Lv %d   |   HP %d\nDMG +%d   |   ATK SPD +%d%%",
+		"Lv %d  |  HP %d  |  MP %d\nDMG +%d  |  ATK SPD +%d%%\nES %d  |  ES RECHARGE +%d%%",
 		player:GetAttribute("Level") or 1,
 		player:GetAttribute("MaxHealth") or 100,
+		player:GetAttribute("MaxMana") or 50,
 		player:GetAttribute("FlatDamage") or 0,
-		player:GetAttribute("AttackSpeed") or 0
+		player:GetAttribute("AttackSpeed") or 0,
+		player:GetAttribute("MaxEnergyShield") or 0,
+		player:GetAttribute("EnergyShieldRecharge") or 0
 	)
 end
 

@@ -19,25 +19,30 @@
      ├── _ARCHITECTURE DON (ModuleScript) : โน้ตของ DON / chwwy (ไฟล์นี้)
      ├── _ARCHITECTURE WEE (ModuleScript) : โน้ตของ WEE / Weerapap3006
      ├── Remotes
-     │    ├── CombatRemote (RemoteEvent) : ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู
+     │    ├── CombatRemote (RemoteEvent) : ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู, "!" ตอนศัตรูเห็นเรา
+     │    ├── DodgeRemote (RemoteEvent) : กลิ้งหลบ (ขอช่วงอมตะจาก Server)
+     │    ├── FlaskRemote (RemoteEvent) : ดื่มขวดยาเลือด/มานา (Server หักจำนวนแล้วค่อยๆ ฟื้น)
      │    ├── InventoryRemote (RemoteEvent) : สวมใส่/ถอด/ทิ้งของ + ข้อมูลกระเป๋า
      │    ├── NotifyRemote (RemoteEvent) : ข้อความกลางจอ
      │    └── TeleportRemote (RemoteEvent) : ขอวาร์ปกลับ Lobby จากหน้าตั้งค่า
      └── Modules
-          ├── SkillData : ค่าสกิล Slash / Spin Slash
+          ├── SkillData : ค่าสกิล Slash / Spin Slash (รวมมานาที่ใช้ ManaCost)
           ├── EnemyData : ค่าศัตรู Stone Grunt / บอส Stone Guardian (เลือด, ท่าตี, EXP, ดรอป)
-          ├── ItemData : ไอเทม, affix, ความหายาก, ช่องสวมใส่ 9 ช่อง
-          ├── PlayerStats : เลือด/ดาเมจต่อเลเวล, EXP ที่ต้องใช้
+          ├── ItemData : ไอเทม, affix (รวม ES), ความหายาก, ช่องสวมใส่ 9 ช่อง
+          ├── PlayerStats : เลือด/มานา/ดาเมจต่อเลเวล, EXP ที่ต้องใช้, กลิ้งหลบ (DODGE_*),
+          │                 มานา (MANA_*), Energy Shield (ENERGY_SHIELD_*), ขวดยา (FLASKS, FLASK_*)
           └── Ui : สี/ฟอนต์/ตัวช่วยสร้าง UI
 
    - ServerScriptService (โซน Server: ปลอดภัย 100% กันโปรโกง)
-     ├── CombatServer (Script) : ตรวจ Cooldown จริง, สร้าง Hitbox, คำนวณดาเมจ
+     ├── CombatServer (Script) : ตรวจ Cooldown + หักมานาจริง, สร้าง Hitbox, คำนวณดาเมจ, กลิ้งหลบ
      ├── EnemyServer (Script) : เริ่ม EnemyService
-     └── PlayerDataServer (Script) : เริ่ม PlayerData
+     ├── PlayerDataServer (Script) : เริ่ม PlayerData
+     └── PlayerResourcesServer (Script) : เริ่ม PlayerResources
 
    - ServerStorage.Modules (โมดูลฝั่ง Server)
      ├── PlayerData : เลเวล, EXP, กระเป๋า, เซฟ/โหลด DataStore
-     ├── EnemyService : เกิดศัตรู, AI, ตาย -> EXP + ดรอป, รีเซ็ตด่าน + ประตูวาร์ป
+     ├── PlayerResources : มานา, Energy Shield (รับดาเมจก่อนเลือด), ขวดยาเลือด/มานา (ไม่เซฟ)
+     ├── EnemyService : เกิดศัตรู, AI, ตาย -> EXP + ขวดยา + ดรอป, รีเซ็ตด่าน + ประตูวาร์ป (เติมทุกอย่างเต็ม)
      └── Loot : สุ่มไอเทม, วางของบนพื้นให้เก็บ
 
    - StarterPlayer (ตั้งค่าตัวละครและสคริปต์ฝั่งผู้เล่น)
@@ -45,8 +50,9 @@
      │                               [แมพ: แก้ใน Studio, อยู่ใน Team Create, ไม่ขึ้น GitHub]
      └── StarterPlayerScripts
           ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมด้วยลูกกลิ้ง
-          ├── CombatClient (LocalScript) : เล็ง, กดสกิล, แถบสกิล, VFX, เตือนท่าศัตรู, เลขดาเมจ
-          ├── HudClient (LocalScript) : แถบเลือด/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
+          ├── CombatClient (LocalScript) : เล็ง, กดสกิล, กลิ้งหลบ (Space, ไม่มีกระโดด), ขวดยาเลือด/มานา
+          │                                (กด 1 / 2), แถบสกิล, VFX, เตือนท่าศัตรู + "!", เลขดาเมจ
+          ├── HudClient (LocalScript) : แถบ ES/เลือด/มานา/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
           ├── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด B)
           ├── EnemyVisualsClient (LocalScript) : ท่าเดินศัตรู + คุมจำนวน Highlight ไม่ให้เกิน 31
           └── MinimapClient (LocalScript) : มินิแมพ (กด M ขยายกลางจอ) + หน้าตั้งค่า (กด P, วาร์ปกลับ Lobby)
@@ -58,12 +64,19 @@
    - แก้เลือด / ความเร็ว / ดาเมจ / ดรอปของศัตรู --> ReplicatedStorage.Modules.EnemyData
    - เพิ่มไอเทม / affix / ช่วงค่าที่สุ่ม / ช่องสวมใส่ --> ReplicatedStorage.Modules.ItemData
    - แก้เลือดเริ่มต้น / เลเวลอัป / EXP         --> ReplicatedStorage.Modules.PlayerStats
+   - แก้ระยะ / คูลดาวน์ / ช่วงอมตะของกลิ้งหลบ  --> ReplicatedStorage.Modules.PlayerStats (DODGE_*)
+     (ปุ่มกลิ้ง + ท่าตีลังกา: CombatClient DODGE_KEY, ROLL_DIP, ROLL_PIVOT)
+   - แก้จำนวนครั้ง / ฟื้นเท่าไร / ได้คืนตอนฆ่าของขวดยา --> ReplicatedStorage.Modules.PlayerStats (FLASKS, FLASK_*)
+     (ปุ่มขวดยา + สีน้ำ/ประกาย: CombatClient FLASK_SLOTS)
+   - แก้มานาเริ่มต้น / ฟื้นมานา / ES ชาร์จช้าเร็ว --> ReplicatedStorage.Modules.PlayerStats (MANA_*, ENERGY_SHIELD_*)
+     (มานาที่สกิลใช้: SkillData ManaCost, ค่า affix ES: ItemData Affixes)
    - แก้สีเอฟเฟกต์ / ขนาดตัวเลขดาเมจ / ปุ่มสกิล --> StarterPlayerScripts.CombatClient
    - แก้สี UI ทั้งเกม                       --> ReplicatedStorage.Modules.Ui
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox    --> ServerScriptService.CombatServer
    - แก้ AI ศัตรู / รูปร่างศัตรู / ด่านเริ่มต้น / ประตูวาร์ป --> ServerStorage.Modules.EnemyService
      (เลือดศัตรูเพิ่มตามจำนวนผู้เล่น: HEALTH_PER_EXTRA_PLAYER, หลบสิ่งกีดขวาง: PATH_*,
-      รีเซ็ตด่าน: resetDungeon, ประตูวาร์ป + TeleportRemote: setupDungeonPortals)
+      รีเซ็ตด่าน: resetDungeon, ประตูวาร์ป + TeleportRemote: setupDungeonPortals,
+      เวลายืนนิ่งตอนเห็นผู้เล่นครั้งแรก: ALERT_TIME, ระดับสายตา: EYE_HEIGHT)
    - แก้ท่าเดินศัตรู / จำนวนเส้นขอบที่โชว์     --> StarterPlayerScripts.EnemyVisualsClient
    - แก้ปุ่มเปิดกระเป๋า / ช่องสวมใส่บนจอ      --> StarterPlayerScripts.InventoryClient (TOGGLE_KEY, SLOT_LAYOUT)
    - แก้มินิแมพ / หน้าตั้งค่า / ปุ่ม M, P       --> StarterPlayerScripts.MinimapClient
@@ -78,11 +91,11 @@
    - ReplicatedStorage.Modules.*                  --> src/ReplicatedStorage/Modules/ชื่อ.luau
        (SkillData, EnemyData, ItemData, PlayerStats, Ui)
    - ReplicatedStorage.Remotes.*                  --> src/ReplicatedStorage/Remotes/ชื่อ.model.json
-       (CombatRemote, InventoryRemote, NotifyRemote, TeleportRemote)
+       (CombatRemote, DodgeRemote, FlaskRemote, InventoryRemote, NotifyRemote, TeleportRemote)
    - ServerScriptService.*                        --> src/ServerScriptService/ชื่อ.server.luau
-       (CombatServer, EnemyServer, PlayerDataServer)
+       (CombatServer, EnemyServer, PlayerDataServer, PlayerResourcesServer)
    - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
-       (PlayerData, EnemyService, Loot)
+       (PlayerData, PlayerResources, EnemyService, Loot)
    - StarterPlayerScripts.*                       --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
        (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient, MinimapClient)
 
@@ -123,6 +136,9 @@
    - ชื่อ "TrainingDummy" -> เลือดเต็มคืนเองหลังตาย 1.2 วิ (เปลี่ยนชื่อ = ไม่รีเลือด)
    - StarterCharacter ต้องมี HumanoidRootPart (กล้องตาม) และเป็น R15
      (RightUpperArm.RightShoulder, UpperTorso.Waist) ไม่งั้นท่าฟันไม่ขยับ
+     (LowerTorso.Root) ไม่งั้นท่ากลิ้งไม่ขยับ (ตัวยังพุ่งไปได้)
+   - ผู้เล่นกระโดดไม่ได้ (Space = กลิ้งหลบ) -> ทุกจุดในแมพต้องเดินขึ้นได้ ห้ามมีขอบที่ต้องกระโดด
+   - ศัตรูมองไม่ทะลุ Part ที่ CanCollide = true -> ผู้เล่นหลังกำแพงจะยังไม่โดนเห็น
    - ห้ามสร้าง Remotes / Modules ใน Studio เอง (มาจากโค้ดทั้งหมด)
    - ด่าน: ใส่ Part ใน Workspace.EnemySpawns ตรงจุดที่อยากให้ศัตรูเกิด
      ชื่อ Part = ชนิดศัตรูใน EnemyData (Grunt / Brute) หรือใส่ Attribute EnemyType
@@ -165,14 +181,60 @@
 5. ปัญหาที่รู้แล้ว ยังไม่ได้แก้ (KNOWN ISSUES):
    - เข้าประตูวาร์ปจาก Lobby = รีเซ็ตทั้งด่าน แม้มีเพื่อนเล่นอยู่ในด่าน
      (ศัตรูที่เพื่อนกำลังสู้จะหายแล้วเกิดใหม่หมด)
-   - ยังไม่ได้ playtest บาลานซ์ ตัวเลขตอนนี้มาจากการคำนวณ (เลเวล 1 ไม่มีของ, ตีไม่พลาด):
-     Stone Grunt ตายใน 3 ฟัน, บอสคนเดียว ~15-20 วิ (รวมเวลาหลบทุบ), 2 คน ~10-15 วิ,
-     Stone Grunt 10 ตัวรุมพร้อมกัน (กลุ่มในด่านตอนนี้) ฆ่าเราที่ยืนเฉยๆ ใน ~2 วิ
    - ศัตรูยังไม่มีท่าง้างตอนโจมตี (มีแค่ท่าเดิน), pathfinding ไม่กระโดด
+   - ช่วงอมตะของการกลิ้งเริ่มตอน Server ได้รับ ไม่ใช่ตอนกด (ping สูง = โดนตีตอนเพิ่งกดได้)
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - เฟส 7 ต่อ: ขวดมานา + แถบมานา + Energy Shield + affix ES [ยังไม่ได้เทสใน Studio]:
+     + มานา: สูงสุด 50 +4/เลเวล, ฟื้น 4%/วิ, SkillData.ManaCost (Slash ฟรี, Spin Slash 15)
+       Client เช็คก่อนตี + ช่องสกิลทับสีน้ำเงินตอนมานาไม่พอ, CombatServer หักจริงหลังเช็คคูลดาวน์
+     + Energy Shield: ได้จากไอเทมเท่านั้น, รับดาเมจศัตรูก่อนเลือด, ไม่โดนตี 3 วิ -> ชาร์จ 25%/วิ
+       affix ใหม่ใน ItemData: EnergyShield (Prefix +10-35), EnergyShieldRecharge (Suffix +10-40%)
+     + ขวดมานา: กด 2 / ปุ่ม Mana บนมือถือ (ฟื้น 50% ของมานาใน 1.5 วิ) ใช้ระบบเดียวกับขวดเลือด
+       PlayerStats.FLASKS (Life/Mana) แทน FLASK_MAX_CHARGES / FLASK_HEAL_PERCENT / FLASK_DURATION,
+       attribute LifeFlaskCharges / ManaFlaskCharges แทน FlaskCharges, FlaskRemote ส่ง kind
+     + โมดูลใหม่ PlayerResources (+ PlayerResourcesServer): ถือมานา/ES/ขวดยา ทั้งหมด,
+       ย้ายโค้ดขวดยาออกจาก PlayerData และ CombatServer มาไว้ที่นี่ (ฟื้นทีละ 0.1 วิ ในลูปเดียว)
+     + EnemyService: ดาเมจลงผู้เล่นผ่าน PlayerResources.takeDamage, ประตู -> restoreAll
+     + HudClient: แถบ ES (โชว์เมื่อมี ES) + มานา, InventoryClient: สเตตัส MP / ES / ES RECHARGE
+     + Ui.Colors: Mana, EnergyShield
+     + ARCHITECTURE.md: ทุกหัวข้อที่เกี่ยว + หัวข้อ PlayerResources + แถวบาลานซ์มานา/ES,
+       README.md: เพิ่ม PlayerResources ในรายการสคริปต์ที่ห้ามแก้ใน Studio
+     + Google Doc "Project poe" + Project poe.docx: งานเฟส 7 = ขวดยาเลือด/มานา + มานา + ES (รอเทส)
+   - เริ่มเฟส 7: ขวดยาเลือด (ไอเดียข้อแรกในหัวข้อ 7 ของ Google Doc) [ยังไม่ได้เทสใน Studio]:
+     + กด 1 / ปุ่ม Flask ข้างปุ่ม Dodge บนมือถือ -> ฮีล 40% ของเลือดสูงสุดใน 1.5 วิ, มี 3 ครั้ง,
+       เลือดเต็มดื่มไม่ได้, ดื่มซ้ำไม่ได้จนกว่าจะฮีลจบ, ดื่มระหว่างกลิ้งได้
+     + ได้คืนตอนฆ่า: +0.25 ครั้ง/ตัว (บอส +1) ให้ทุกคนที่ตีโดน, เต็มตอนเกิด + ผ่านประตูวาร์ป/ปุ่มกลับ Lobby
+     + FlaskRemote ใหม่, PlayerStats (FLASK_*), PlayerData (refillFlask / addFlaskCharges /
+       useFlaskCharge, attribute FlaskCharges ไม่เซฟ), CombatServer (เช็ค + ฮีลทีละนิด),
+       EnemyService (ตาย -> ขวดยา, ประตู -> เติมเต็ม), CombatClient (ช่อง Flask มีน้ำแดงตามจำนวน +
+       ประกายแดงตอนดื่ม, หมายเลขหัวข้อแถบสกิลเลื่อนเป็นข้อ 8)
+     + ARCHITECTURE.md: เอกสารขวดยาทุกหัวข้อ + แถวบาลานซ์ขวดยา, แยกบรรทัด KNOWN ISSUES ที่ติดกัน
+     + Google Doc "Project poe" + Project poe.docx: เฟส 7+ = กำลังทำ (เริ่ม 30/10, ขวดยาเลือด รอเทส),
+       งานที่กำลังทำ = ขวดยาเลือด, ก้าวถัดไป = เทสแล้วไปข้อธาตุ + สถานะผิดปกติ
+   - Google Doc "Project poe" + Project poe.docx: ใส่ไอเดียขยายเกมลงหัวข้อ "7. ไว้ทีหลัง" (เรียงจากคุ้มสุด):
+     ขวดยาเลือด, ธาตุ + สถานะผิดปกติ, รูนสลักหิน (แต่งสกิล), หินคราฟต์, แผ่นศิลา (endgame),
+     ผังพาสซีฟ + คลาส (ท้ายสุด) + ข้อควรระวังเรื่องไม่ใช้ชื่อ/ภาพ/ตัวเลขของ PoE,
+     "ก้าวถัดไป" ในหัวข้อ 1 = หยิบไอเดียจากหัวข้อ 7 มาทำทีละอย่าง
+   - เฟส 6 (ให้คนลองเล่น) ผ่าน = เฟส 1-6 เสร็จครบ ได้ MVP ตามขอบเขต:
+     + Google Doc "Project poe" + Project poe.docx: เฟส 6 = เสร็จ (จบ 30/10), ติ๊กงานเฟส 6 ครบ,
+       สถานะตอนนี้ = เฟส 7+ ขยายเกม (ยังไม่เริ่ม), งานต่อไป = เลือกฟีเจอร์แรกจาก "7. ไว้ทีหลัง"
+   - เทสซ้ำผ่าน (มอนไม่วาปแล้ว, "!" ขึ้น, กลิ้งหลบผ่านวงบอสได้) + เฟส 1-5 เทสผ่านครบ:
+     + KNOWN ISSUES: เอาเรื่องมอนวาปและ "ยังไม่ได้ playtest บาลานซ์" ออก
+       (ตารางตัวเลขบาลานซ์ยังอยู่ใน ARCHITECTURE.md หัวข้อ 5 ไว้อ้างอิงตอนปรับค่า)
+     + Google Doc "Project poe" + Project poe.docx: เฟส 1-5 = เสร็จ (จบ 30/10),
+       ติ๊กทดสอบมือถือจำลอง / เข้าออกหลายรอบ / ปรับบาลานซ์, งานต่อไป = หาคนลองเล่น 3-5 คน
+   - แก้จากเทสเฟส 6:
+     + ศัตรูวาปมาตีตอนเจอครั้งแรก (EnemyService): ต้องมองเห็นผู้เล่นจริงถึงจะไล่ (Raycast จากระดับตา,
+       ไม่ทะลุกำแพง), เห็นครั้งแรก = ยืนนิ่ง 0.6 วิ + "!" บนหัว (EnemyAlert -> CombatClient),
+       ประตูเข้าด่านโหลดพื้นที่หน้าประตูบน Client ก่อนวาร์ป (RequestStreamAroundAsync)
+     + เอากระโดดออก เปลี่ยนเป็นกลิ้งหลบ: Space / ปุ่ม Dodge บนมือถือ (ตรงที่เคยเป็นปุ่มกระโดด),
+       CombatClient เคลื่อนตัว + ท่าตีลังกา, DodgeRemote ใหม่, CombatServer เช็คคูลดาวน์แล้วตั้ง
+       InvulnerableUntil -> EnemyService ไม่ทำดาเมจช่วงนั้น, ค่าอยู่ใน PlayerStats (DODGE_*)
+     + CombatClient: แยกการสร้างช่องในแถบสกิลเป็น createSlot (ใช้ทั้งสกิลและ Dodge)
+     + Google Doc "Project poe" + Project poe.docx: เฟส 6 = กำลังทำ (เริ่ม 30/10) + ปัญหาที่เจอรอบแรก
    - อัปเดตเอกสารทั้งหมดให้ตรงโค้ดล่าสุด รวมงานของ WEE (41e769a..043131d): ด่าน + ประตูวาร์ป,
      MinimapClient + หน้าตั้งค่า, TeleportRemote, ช่องสวมใส่ 9 ช่อง + AllowOffHand, กระเป๋ากด B,
      ข้อความในเกมเป็นภาษาอังกฤษ (ชื่อสกิล/ศัตรู/ไอเทม/ข้อความแจ้งเตือนที่อ้างในเอกสาร + ปุ่ม ⚙️ -> SET)

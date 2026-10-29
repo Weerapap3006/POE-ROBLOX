@@ -46,6 +46,8 @@ ItemData.StatText = {
 	FlatDamage = "+%d Damage",
 	MaxHealth = "+%d Max Health",
 	AttackSpeed = "+%d%% Attack Speed",
+	MaxEnergyShield = "+%d Max Energy Shield",
+	EnergyShieldRecharge = "+%d%% Energy Shield Recharge Rate",
 } :: { [string]: string }
 
 -- Equipment slots in display order (9 slots supported)
@@ -154,6 +156,8 @@ ItemData.Affixes = {
 	FlatDamage = { Kind = "Prefix", Stat = "FlatDamage", Min = 3, Max = 12 },
 	MaxHealth = { Kind = "Prefix", Stat = "MaxHealth", Min = 15, Max = 60 },
 	AttackSpeed = { Kind = "Suffix", Stat = "AttackSpeed", Min = 5, Max = 20 },
+	EnergyShield = { Kind = "Prefix", Stat = "MaxEnergyShield", Min = 10, Max = 35 },
+	EnergyShieldRecharge = { Kind = "Suffix", Stat = "EnergyShieldRecharge", Min = 10, Max = 40 },
 } :: { [string]: AffixInfo }
 
 -- How many affixes each rarity rolls, and how many of them may be prefixes / suffixes

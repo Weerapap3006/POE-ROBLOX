@@ -137,7 +137,7 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 | 🗺️ แมพ → แก้ใน **Roblox Studio** (อยู่ใน Team Create, ไม่ขึ้น GitHub) | 💻 โค้ด → แก้ใน **VS Code** แล้ว push ขึ้น **GitHub** |
 |---|---|
-| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, ด่านกับประตูวาร์ป `DungeonMap`, จุดเกิดศัตรู `EnemySpawns`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `EnemyData`, `ItemData`, `CombatServer`, `PlayerData`, `EnemyService`, `CombatClient`, `HudClient`, `InventoryClient`, `EnemyVisualsClient`, `MinimapClient`, `_ARCHITECTURE DON`, `_ARCHITECTURE WEE` (รายการเต็มใน [`ARCHITECTURE.md`](ARCHITECTURE.md)) |
+| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, ด่านกับประตูวาร์ป `DungeonMap`, จุดเกิดศัตรู `EnemySpawns`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `EnemyData`, `ItemData`, `CombatServer`, `PlayerData`, `PlayerResources`, `EnemyService`, `CombatClient`, `HudClient`, `InventoryClient`, `EnemyVisualsClient`, `MinimapClient`, `_ARCHITECTURE DON`, `_ARCHITECTURE WEE` (รายการเต็มใน [`ARCHITECTURE.md`](ARCHITECTURE.md)) |
 | `StarterPlayer.StarterCharacter` | ถ้าไปแก้สคริปต์พวกนี้ใน Studio จะ**โดน Rojo เขียนทับ**ตอนใครก็ตามกด Connect หรือเซฟไฟล์นั้น |
 | Lighting, Teams, SoundService, หน้าตา UI ใน StarterGui | ลบใน Studio → Rojo สร้างกลับมา, เปลี่ยนชื่อ → ได้ตัวซ้ำ 2 ตัว |
 | | UI ตอนนี้ (แถบเลือด, แถบสกิล, กระเป๋า, มินิแมพ, หน้าตั้งค่า) **สร้างจากโค้ด** ไม่ได้อยู่ใน StarterGui |
