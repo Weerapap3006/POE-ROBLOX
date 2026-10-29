@@ -5,7 +5,7 @@
 local SkillData = {
 	BasicSlash = {
 		Name = "Basic Slash",
-		Cooldown = 0.55, -- Seconds between attacks
+		Cooldown = 0.15, -- Seconds between attacks
 		MinDamage = 26,
 		MaxDamage = 50,
 		CritChance = 0.25, -- 25% chance

@@ -24,6 +24,7 @@ local SkillData = require(modulesFolder:WaitForChild("SkillData"))
 local lastAttackTime = 0
 local comboStep = 1
 local currentMouseWorldPos = Vector3.zero
+local isHoldingAttack = false
 
 -- Raycast parameters (ignore player's own character and VFX)
 local raycastParams = RaycastParams.new()
@@ -260,46 +261,63 @@ local function showHitFeedback(enemyModel: Model, damage: number, isCrit: boolea
 end
 
 -- ==========================================
--- 4. INPUT LISTENER (LEFT CLICK TO ATTACK)
+-- 4. INPUT LISTENER (LEFT CLICK / HOLD TO ATTACK)
 -- ==========================================
+local function tryBasicSlash()
+	local character = player.Character
+	if not character then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not humanoid or not rootPart or humanoid.Health <= 0 then
+		return
+	end
+
+	-- Client-side cooldown check for responsiveness
+	local skill = SkillData.BasicSlash
+	local now = os.clock()
+	if now - lastAttackTime < skill.Cooldown then
+		return
+	end
+	lastAttackTime = now
+
+	-- Snap character rotation immediately toward mouse when attacking
+	local aimPoint = getMouseWorldPosition(rootPart.Position)
+	local flatTarget = Vector3.new(aimPoint.X, rootPart.Position.Y, aimPoint.Z)
+	if (flatTarget - rootPart.Position).Magnitude > 0.1 then
+		rootPart.CFrame = CFrame.lookAt(rootPart.Position, flatTarget)
+	end
+
+	-- 1) Play instant local Slash VFX & Swing animation (0 ms delay)
+	playSlashVFX(character, aimPoint, comboStep)
+	comboStep = if comboStep == 1 then 2 else 1
+
+	-- 2) Tell Server we used BasicSlash aiming at aimPoint
+	combatRemote:FireServer("BasicSlash", aimPoint)
+end
+
 UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEvent: boolean)
 	if gameProcessedEvent then
 		return
 	end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		local character = player.Character
-		if not character then
-			return
-		end
+		isHoldingAttack = true
+		tryBasicSlash()
+	end
+end)
 
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if not humanoid or not rootPart or humanoid.Health <= 0 then
-			return
-		end
+UserInputService.InputEnded:Connect(function(input: InputObject)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		isHoldingAttack = false
+	end
+end)
 
-		-- Client-side cooldown check for responsiveness
-		local skill = SkillData.BasicSlash
-		local now = os.clock()
-		if now - lastAttackTime < skill.Cooldown then
-			return
-		end
-		lastAttackTime = now
-
-		-- Snap character rotation immediately toward mouse when attacking
-		local aimPoint = getMouseWorldPosition(rootPart.Position)
-		local flatTarget = Vector3.new(aimPoint.X, rootPart.Position.Y, aimPoint.Z)
-		if (flatTarget - rootPart.Position).Magnitude > 0.1 then
-			rootPart.CFrame = CFrame.lookAt(rootPart.Position, flatTarget)
-		end
-
-		-- 1) Play instant local Slash VFX & Swing animation (0 ms delay)
-		playSlashVFX(character, aimPoint, comboStep)
-		comboStep = if comboStep == 1 then 2 else 1
-
-		-- 2) Tell Server we used BasicSlash aiming at aimPoint
-		combatRemote:FireServer("BasicSlash", aimPoint)
+RunService.Heartbeat:Connect(function()
+	if isHoldingAttack then
+		tryBasicSlash()
 	end
 end)
 
