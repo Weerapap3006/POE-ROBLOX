@@ -137,10 +137,10 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 | 🗺️ แมพ → แก้ใน **Roblox Studio** (อยู่ใน Team Create, ไม่ขึ้น GitHub) | 💻 โค้ด → แก้ใน **VS Code** แล้ว push ขึ้น **GitHub** |
 |---|---|
-| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, จุดเกิดศัตรู `EnemySpawns`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `EnemyData`, `ItemData`, `CombatServer`, `PlayerData`, `EnemyService`, `CombatClient`, `HudClient`, `InventoryClient`, `EnemyVisualsClient`, `_ARCHITECTURE DON`, `_ARCHITECTURE WEE` (รายการเต็มใน [`ARCHITECTURE.md`](ARCHITECTURE.md)) |
+| ทุกอย่างใน Workspace (`Enemies/TrainingDummy`, ด่านกับประตูวาร์ป `DungeonMap`, จุดเกิดศัตรู `EnemySpawns`, พื้น, Terrain ฯลฯ) | ทุกสคริปต์ที่มีไฟล์อยู่ใน `src/` เช่น `SkillData`, `EnemyData`, `ItemData`, `CombatServer`, `PlayerData`, `EnemyService`, `CombatClient`, `HudClient`, `InventoryClient`, `EnemyVisualsClient`, `MinimapClient`, `_ARCHITECTURE DON`, `_ARCHITECTURE WEE` (รายการเต็มใน [`ARCHITECTURE.md`](ARCHITECTURE.md)) |
 | `StarterPlayer.StarterCharacter` | ถ้าไปแก้สคริปต์พวกนี้ใน Studio จะ**โดน Rojo เขียนทับ**ตอนใครก็ตามกด Connect หรือเซฟไฟล์นั้น |
 | Lighting, Teams, SoundService, หน้าตา UI ใน StarterGui | ลบใน Studio → Rojo สร้างกลับมา, เปลี่ยนชื่อ → ได้ตัวซ้ำ 2 ตัว |
-| | UI ตอนนี้ (แถบเลือด, แถบสกิล, กระเป๋า) **สร้างจากโค้ด** ไม่ได้อยู่ใน StarterGui |
+| | UI ตอนนี้ (แถบเลือด, แถบสกิล, กระเป๋า, มินิแมพ, หน้าตั้งค่า) **สร้างจากโค้ด** ไม่ได้อยู่ใน StarterGui |
 
 **ของใหม่ใส่ที่ไหน**
 
@@ -171,5 +171,5 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 | CHANGELOG conflict | เกิดบ่อยเพราะต่างคนเพิ่มบรรทัดบนสุด → กด **Accept Both** |
 | Rojo กด Connect ไม่ติด | เช็กว่ายังมี terminal ที่รัน `rojo serve` อยู่ และ `rojo --version` เป็น 7.7.1 |
 | ปลั๊กอินเตือนเวอร์ชันไม่ตรง | ปิด Studio แล้วสั่ง `rojo plugin install` ใหม่ |
-| เข้าเกมแล้วขึ้น "เทสใน Studio: เล่นได้ปกติ แต่ไม่บันทึกความคืบหน้า" | ปกติใน `game.rbxl` (สำเนาในเครื่องใช้ DataStore ไม่ได้) ถ้าอยากเทสการเซฟ ให้เทสใน Team Create ที่เปิด **Game Settings → Security → Enable Studio Access to API Services** |
-| เข้าเกมแล้วขึ้น "โหลดข้อมูลไม่สำเร็จ" | DataStore ของ Roblox มีปัญหาชั่วคราว (ลองแล้ว 3 รอบ) รอบนั้นจะไม่เซฟ กันข้อมูลเก่าโดนทับ ออกแล้วเข้าใหม่ |
+| เข้าเกมแล้วขึ้น "Studio Test: Playable, but progress will not be saved" | ปกติใน `game.rbxl` (สำเนาในเครื่องใช้ DataStore ไม่ได้) ถ้าอยากเทสการเซฟ ให้เทสใน Team Create ที่เปิด **Game Settings → Security → Enable Studio Access to API Services** |
+| เข้าเกมแล้วขึ้น "Failed to load data. Progress will not be saved this session" | DataStore ของ Roblox มีปัญหาชั่วคราว (ลองแล้ว 3 รอบ) รอบนั้นจะไม่เซฟ กันข้อมูลเก่าโดนทับ ออกแล้วเข้าใหม่ |

@@ -9,9 +9,10 @@
 
 1. โครงสร้างโฟลเดอร์หลัก (EXPLORER STRUCTURE):
    - Workspace  [แมพ: แก้ใน Studio, อยู่ใน Team Create, ไม่ขึ้น GitHub]
-     ├── Enemies : ศัตรูทั้งหมด (EnemyService สร้างตอนเริ่มเกม)
+     ├── DungeonMap : Lobby (โซนปลอดภัย), กำแพงด่าน, ประตูวาร์ป LobbyDungeonPortal / DungeonReturnPortal
+     ├── Enemies : ศัตรูทั้งหมด (EnemyService สร้างตอนเริ่มเกม / ตอนรีเซ็ตด่าน)
      │    └── TrainingDummy (Model) : หุ่นซ้อมมือ R15 (HP 500, รีเลือดเอง, ไม่ให้ EXP/ของ)
-     ├── EnemySpawns (ไม่บังคับ) : Part จุดเกิดศัตรู ชื่อ Grunt / Brute (ไม่มี = ใช้ด่านเริ่มต้น)
+     ├── EnemySpawns : Part จุดเกิดศัตรู ชื่อ Grunt / Brute (ตอนนี้ Grunt 20 + Brute 1, ไม่มี = ใช้ด่านเริ่มต้น)
      └── Drops : ของที่ดรอปบนพื้น (โค้ดสร้างตอนเล่น)
 
    - ReplicatedStorage (โซนกลาง: เห็นทั้ง Client และ Server)
@@ -20,11 +21,12 @@
      ├── Remotes
      │    ├── CombatRemote (RemoteEvent) : ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู
      │    ├── InventoryRemote (RemoteEvent) : สวมใส่/ถอด/ทิ้งของ + ข้อมูลกระเป๋า
-     │    └── NotifyRemote (RemoteEvent) : ข้อความกลางจอ
+     │    ├── NotifyRemote (RemoteEvent) : ข้อความกลางจอ
+     │    └── TeleportRemote (RemoteEvent) : ขอวาร์ปกลับ Lobby จากหน้าตั้งค่า
      └── Modules
-          ├── SkillData : ค่าสกิล ฟัน / หมุนฟัน
-          ├── EnemyData : ค่าศัตรู ภูตหิน / บอสยักษ์หิน (เลือด, ท่าตี, EXP, ดรอป)
-          ├── ItemData : ไอเทม, affix, ความหายาก
+          ├── SkillData : ค่าสกิล Slash / Spin Slash
+          ├── EnemyData : ค่าศัตรู Stone Grunt / บอส Stone Guardian (เลือด, ท่าตี, EXP, ดรอป)
+          ├── ItemData : ไอเทม, affix, ความหายาก, ช่องสวมใส่ 9 ช่อง
           ├── PlayerStats : เลือด/ดาเมจต่อเลเวล, EXP ที่ต้องใช้
           └── Ui : สี/ฟอนต์/ตัวช่วยสร้าง UI
 
@@ -35,7 +37,7 @@
 
    - ServerStorage.Modules (โมดูลฝั่ง Server)
      ├── PlayerData : เลเวล, EXP, กระเป๋า, เซฟ/โหลด DataStore
-     ├── EnemyService : เกิดศัตรู, AI, ตาย -> EXP + ดรอป, เกิดใหม่
+     ├── EnemyService : เกิดศัตรู, AI, ตาย -> EXP + ดรอป, รีเซ็ตด่าน + ประตูวาร์ป
      └── Loot : สุ่มไอเทม, วางของบนพื้นให้เก็บ
 
    - StarterPlayer (ตั้งค่าตัวละครและสคริปต์ฝั่งผู้เล่น)
@@ -45,22 +47,26 @@
           ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมด้วยลูกกลิ้ง
           ├── CombatClient (LocalScript) : เล็ง, กดสกิล, แถบสกิล, VFX, เตือนท่าศัตรู, เลขดาเมจ
           ├── HudClient (LocalScript) : แถบเลือด/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
-          ├── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด I)
-          └── EnemyVisualsClient (LocalScript) : ท่าเดินศัตรู + คุมจำนวน Highlight ไม่ให้เกิน 31
+          ├── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด B)
+          ├── EnemyVisualsClient (LocalScript) : ท่าเดินศัตรู + คุมจำนวน Highlight ไม่ให้เกิน 31
+          └── MinimapClient (LocalScript) : มินิแมพ (กด M ขยายกลางจอ) + หน้าตั้งค่า (กด P, วาร์ปกลับ Lobby)
 
 ------------------------------------------------------------------------------
 2. อยากแก้ค่าอะไร ให้ไปที่ไฟล์ไหน? (QUICK EDIT GUIDE):
    - แก้มุมกล้อง / ความเร็วกล้อง / ระยะซูม   --> StarterPlayerScripts.CameraScript
    - แก้ความแรงสกิล / คูลดาวน์ / ระยะฟัน     --> ReplicatedStorage.Modules.SkillData
    - แก้เลือด / ความเร็ว / ดาเมจ / ดรอปของศัตรู --> ReplicatedStorage.Modules.EnemyData
-   - เพิ่มไอเทม / affix / ช่วงค่าที่สุ่ม       --> ReplicatedStorage.Modules.ItemData
+   - เพิ่มไอเทม / affix / ช่วงค่าที่สุ่ม / ช่องสวมใส่ --> ReplicatedStorage.Modules.ItemData
    - แก้เลือดเริ่มต้น / เลเวลอัป / EXP         --> ReplicatedStorage.Modules.PlayerStats
    - แก้สีเอฟเฟกต์ / ขนาดตัวเลขดาเมจ / ปุ่มสกิล --> StarterPlayerScripts.CombatClient
    - แก้สี UI ทั้งเกม                       --> ReplicatedStorage.Modules.Ui
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox    --> ServerScriptService.CombatServer
-   - แก้ AI ศัตรู / รูปร่างศัตรู / ด่านเริ่มต้น  --> ServerStorage.Modules.EnemyService
-     (เลือดศัตรูเพิ่มตามจำนวนผู้เล่น: HEALTH_PER_EXTRA_PLAYER, หลบสิ่งกีดขวาง: PATH_*)
+   - แก้ AI ศัตรู / รูปร่างศัตรู / ด่านเริ่มต้น / ประตูวาร์ป --> ServerStorage.Modules.EnemyService
+     (เลือดศัตรูเพิ่มตามจำนวนผู้เล่น: HEALTH_PER_EXTRA_PLAYER, หลบสิ่งกีดขวาง: PATH_*,
+      รีเซ็ตด่าน: resetDungeon, ประตูวาร์ป + TeleportRemote: setupDungeonPortals)
    - แก้ท่าเดินศัตรู / จำนวนเส้นขอบที่โชว์     --> StarterPlayerScripts.EnemyVisualsClient
+   - แก้ปุ่มเปิดกระเป๋า / ช่องสวมใส่บนจอ      --> StarterPlayerScripts.InventoryClient (TOGGLE_KEY, SLOT_LAYOUT)
+   - แก้มินิแมพ / หน้าตั้งค่า / ปุ่ม M, P       --> StarterPlayerScripts.MinimapClient
    - แก้ขนาดกระเป๋า / ระบบเซฟ                --> ServerStorage.Modules.PlayerData
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน     --> StarterPlayer.StarterCharacter (แก้ใน Studio)
 
@@ -72,13 +78,13 @@
    - ReplicatedStorage.Modules.*                  --> src/ReplicatedStorage/Modules/ชื่อ.luau
        (SkillData, EnemyData, ItemData, PlayerStats, Ui)
    - ReplicatedStorage.Remotes.*                  --> src/ReplicatedStorage/Remotes/ชื่อ.model.json
-       (CombatRemote, InventoryRemote, NotifyRemote)
+       (CombatRemote, InventoryRemote, NotifyRemote, TeleportRemote)
    - ServerScriptService.*                        --> src/ServerScriptService/ชื่อ.server.luau
        (CombatServer, EnemyServer, PlayerDataServer)
    - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
        (PlayerData, EnemyService, Loot)
    - StarterPlayerScripts.*                       --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
-       (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient)
+       (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient, MinimapClient)
 
    จังหวะที่โดนทับ:
    - ตอนกด Connect ใน Rojo: Studio ถูกทำให้ตรงกับไฟล์ทั้งหมด
@@ -88,11 +94,11 @@
    - เปลี่ยนชื่อใน Studio -> ได้ตัวซ้ำ 2 ตัว (ตัวชื่อเดิมจาก Rojo + ตัวที่เปลี่ยนชื่อ)
 
    [แมพ: แก้ใน Studio] ไม่มีไฟล์ใน src/ -> Rojo ไม่ยุ่ง, ไม่ขึ้น GitHub
-   - Workspace ทั้งหมด (Enemies/TrainingDummy, SpawnLocation, Baseplate, Terrain)
+   - Workspace ทั้งหมด (Enemies/TrainingDummy, DungeonMap, EnemySpawns, SpawnLocation, Baseplate, Terrain)
    - StarterPlayer.StarterCharacter
    - Lighting, Teams, SoundService และ service อื่นที่ไม่อยู่ใน default.project.json
    - หน้าตา UI (ScreenGui/Frame/ปุ่ม) ใน StarterGui
-     (ตอนนี้ UI ของ MVP ทั้งหมดสร้างจากโค้ดใน HudClient / InventoryClient / CombatClient
+     (ตอนนี้ UI ทั้งหมดสร้างจากโค้ดใน HudClient / InventoryClient / CombatClient / MinimapClient
       StarterGui ยังว่าง -> อยากแก้หน้าตา UI ปัจจุบันต้องแก้ในโค้ด)
    * แมพเก็บอยู่ใน Team Create เท่านั้น (ย้อนเวอร์ชันได้ที่ File -> Version History)
    * ถ้าวันหลังมีไฟล์ชื่อเดียวกันเพิ่มใน src/ ของใน Studio จะโดนทับ
@@ -122,6 +128,12 @@
      ชื่อ Part = ชนิดศัตรูใน EnemyData (Grunt / Brute) หรือใส่ Attribute EnemyType
      ไม่มีโฟลเดอร์นี้ = โค้ดวางด่านเริ่มต้นรอบ SpawnLocation (ลูกสมุน 6 + บอส 1)
      เหนือ Part 10 studs ห้ามมีหลังคา (ศัตรูยิง Raycast หาพื้นจากตรงนั้น)
+   - ประตูวาร์ป: ใน Workspace.DungeonMap ต้องมี LobbyDungeonPortal (รีเซ็ตด่าน + เข้าด่าน)
+     และ DungeonReturnPortal (กลับ Lobby) ข้างในแต่ละบานมี ProximityPrompt ชื่อ PortalPrompt
+     จุดเริ่มด่าน = Part ชื่อ DungeonEntranceSpawn, จุดกลับ Lobby = SpawnLocation ตัวแรกที่เจอ
+     ไม่มีโฟลเดอร์ DungeonMap = ประตูวาร์ปและปุ่ม Return to Lobby ในหน้าตั้งค่าใช้ไม่ได้ทั้งคู่
+     ข้อความป้ายประตู (TextLabel) + ObjectText/ActionText ของ PortalPrompt โค้ดตั้งทับตอนเริ่มเกม
+     -> แก้ใน Studio ไม่มีผล ต้องแก้ใน EnemyService (setupDungeonPortals)
    - ศัตรูเดินอ้อมกำแพงได้ (PathfindingService) แต่กระโดดไม่ได้
      ทางที่ต้องกระโดดขึ้น = ศัตรูไปไม่ถึง, ทางเดินต้องกว้างพอให้บอส (~10 studs)
      ของตกแต่งที่ไม่อยากให้ขวางทาง -> ตั้ง CanCollide = false
@@ -151,14 +163,27 @@
 
 ------------------------------------------------------------------------------
 5. ปัญหาที่รู้แล้ว ยังไม่ได้แก้ (KNOWN ISSUES):
-   - Workspace.Script1: สคริปต์ว่าง 3 ตัว (print "Hello world!") ปนอยู่ในแมพ -> ลบทิ้งใน Studio
-     (แก้จากโค้ดไม่ได้ เพราะแมพอยู่ใน Team Create)
+   - เข้าประตูวาร์ปจาก Lobby = รีเซ็ตทั้งด่าน แม้มีเพื่อนเล่นอยู่ในด่าน
+     (ศัตรูที่เพื่อนกำลังสู้จะหายแล้วเกิดใหม่หมด)
    - ยังไม่ได้ playtest บาลานซ์ ตัวเลขตอนนี้มาจากการคำนวณ (เลเวล 1 ไม่มีของ, ตีไม่พลาด):
-     ภูตหินตายใน 3 ฟัน, บอสคนเดียว ~15-20 วิ (รวมเวลาหลบทุบ), 2 คน ~10-15 วิ
+     Stone Grunt ตายใน 3 ฟัน, บอสคนเดียว ~15-20 วิ (รวมเวลาหลบทุบ), 2 คน ~10-15 วิ,
+     Stone Grunt 10 ตัวรุมพร้อมกัน (กลุ่มในด่านตอนนี้) ฆ่าเราที่ยืนเฉยๆ ใน ~2 วิ
    - ศัตรูยังไม่มีท่าง้างตอนโจมตี (มีแค่ท่าเดิน), pathfinding ไม่กระโดด
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
+   [2026-10-30]
+   - อัปเดตเอกสารทั้งหมดให้ตรงโค้ดล่าสุด รวมงานของ WEE (41e769a..043131d): ด่าน + ประตูวาร์ป,
+     MinimapClient + หน้าตั้งค่า, TeleportRemote, ช่องสวมใส่ 9 ช่อง + AllowOffHand, กระเป๋ากด B,
+     ข้อความในเกมเป็นภาษาอังกฤษ (ชื่อสกิล/ศัตรู/ไอเทม/ข้อความแจ้งเตือนที่อ้างในเอกสาร + ปุ่ม ⚙️ -> SET)
+     + โน้ตนี้: โครงสร้าง, QUICK EDIT GUIDE, รายการไฟล์ข้อ 3, สิ่งที่โค้ดต้องการจากแมพ (ประตูวาร์ป)
+     + KNOWN ISSUES: เอา Workspace.Script1 ออก (WEE เอาออกจาก ARCHITECTURE.md แล้ว),
+       เพิ่มประตูวาร์ปรีเซ็ตทั้งด่าน + Stone Grunt 10 ตัวรุม
+     + ARCHITECTURE.md: RespawnTime ไม่ได้ใช้แล้ว, PlayerData (ย้ายช่องเก่า Weapon/Armor, กฎ OffHand,
+       แหวน/Special), ของที่ประตูวาร์ปต้องมี (PortalPrompt) + ข้อความป้ายที่โค้ดตั้งทับ,
+       ข้อจำกัดใหม่ในหัวข้อ 5, แก้คำผิด
+     + README: เพิ่ม DungeonMap / MinimapClient ในตารางแยกงาน, ข้อความ error ในตารางปัญหาเป็นภาษาอังกฤษ
+     + Project poe.docx: ให้ตรงกับ Google Doc "Project poe" (เอกสารแผน + ติดตามความคืบหน้า)
    [2026-10-29]
    - CombatServer / PlayerData: พารามิเตอร์จาก Remote ใช้ type any แทน unknown
      (ส่วนเสริม Roblox LSP รุ่นเก่าไม่รู้จัก unknown -> ขึ้นเตือนใน Problems, ผลการทำงานเหมือนเดิม)
