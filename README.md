@@ -9,6 +9,7 @@
 
 - **DON** (chwwy) → [`src/ReplicatedStorage/_ARCHITECTURE DON.luau`](src/ReplicatedStorage/_ARCHITECTURE%20DON.luau)
 - **WEE** (Weerapap3006) → [`src/ReplicatedStorage/_ARCHITECTURE WEE.luau`](src/ReplicatedStorage/_ARCHITECTURE%20WEE.luau)
+- **KUKOO** (Lazypopular) → [`src/ReplicatedStorage/_ARCHITECTURE KUKOO.luau`](src/ReplicatedStorage/_ARCHITECTURE%20KUKOO.luau)
 
 อธิบายแต่ละระบบแบบละเอียด (หน้าที่ของแต่ละสคริปต์, flow การต่อสู้ Client ↔ Server) ดูที่ [`ARCHITECTURE.md`](ARCHITECTURE.md)
 

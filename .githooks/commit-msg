@@ -1,0 +1,36 @@
+#!/bin/sh
+# Hook to validate commit message format (Conventional Commits)
+
+commit_msg_file="$1"
+commit_msg=$(head -n 1 "$commit_msg_file")
+
+# Allow merge commits
+if echo "$commit_msg" | grep -qE '^Merge branch '; then
+    exit 0
+fi
+
+# Regex for Conventional Commits
+# e.g.: feat: ..., feat(combat): ..., fix: ..., test: ...
+pattern="^(feat|fix|refactor|test|docs|style|chore|build|ci)(\([a-zA-Z0-9_\-]+\))?: .+"
+
+if ! echo "$commit_msg" | grep -qE "$pattern"; then
+    echo ""
+    echo "❌ [GIT ERROR] รูปแบบ Commit Message ไม่ถูกต้องตามมาตรฐาน!"
+    echo "   ข้อความของคุณ: \"$commit_msg\""
+    echo ""
+    echo "💡 กรุณาใช้รูปแบบ Conventional Commits ดังนี้:"
+    echo "   <type>(<scope>): <คำอธิบายสั้นๆ>"
+    echo ""
+    echo "   ตัวอย่าง:"
+    echo "   feat: add hold-to-attack support"
+    echo "   feat(combat): update basic slash cooldown"
+    echo "   fix(enemy): fix walk animation pathfinding"
+    echo "   test(stats): add unit tests for PlayerStats"
+    echo "   docs: update architecture notes"
+    echo ""
+    echo "   ประเภทที่อนุญาต: feat, fix, refactor, test, docs, style, chore, build, ci"
+    echo ""
+    exit 1
+fi
+
+exit 0
