@@ -14,10 +14,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Rokit
-        uses: paradoxum-games/setup-rokit@v3
-        with:
-          cache: true
+      - name: Install Rokit & Toolchain
+        run: |
+          mkdir -p "$HOME/.rokit/bin"
+          curl -sSL "https://github.com/rojo-rbx/rokit/releases/download/v1.2.0/rokit-1.2.0-linux-x86_64.zip" -o /tmp/rokit.zip
+          unzip -q -o /tmp/rokit.zip -d "$HOME/.rokit/bin"
+          chmod +x "$HOME/.rokit/bin/rokit"
+          echo "$HOME/.rokit/bin" >> $GITHUB_PATH
+          "$HOME/.rokit/bin/rokit" self-install
+          "$HOME/.rokit/bin/rokit" install --no-trust-check
 
       - name: Static Analysis (Selene)
         run: selene src
