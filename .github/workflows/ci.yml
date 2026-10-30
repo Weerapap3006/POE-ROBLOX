@@ -1,0 +1,30 @@
+name: CI Quality Gate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    name: Lint, Format & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rokit Toolchain
+        uses: rojo-rbx/setup-rokit@v2
+
+      - name: Install Tools
+        run: rokit install
+
+      - name: Static Analysis (Selene)
+        run: selene src
+
+      - name: Run Unit Tests (Lune)
+        run: lune run tests/runner.luau
+
+      - name: Check Formatting (StyLua)
+        run: stylua --check tests
