@@ -10,6 +10,8 @@ local RunService = game:GetService("RunService")
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local ItemData = require(modulesFolder:WaitForChild("ItemData"))
 local PlayerStats = require(modulesFolder:WaitForChild("PlayerStats"))
+local SkillData = require(modulesFolder:WaitForChild("SkillData"))
+local RuneData = require(modulesFolder:WaitForChild("RuneData"))
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local inventoryRemote = remotesFolder:WaitForChild("InventoryRemote") :: RemoteEvent
@@ -33,6 +35,7 @@ export type Profile = {
 	Exp: number,
 	Inventory: { ItemData.Item },
 	Equipped: { [string]: ItemData.Item },
+	SkillRunes: { [string]: { ItemData.Item } }, -- Stone runes socketed in each skill (in socket order, no gaps)
 	Stats: PlayerStats.Stats,
 	-- False when loading failed: saving would overwrite the player's real data with this empty profile
 	CanSave: boolean,
@@ -114,18 +117,42 @@ local function sanitizeItem(raw: any): ItemData.Item?
 	return { Id = raw.Id, Base = raw.Base, Rarity = raw.Rarity, Affixes = affixes }
 end
 
+-- Keeps only runes that still exist, fit the skill, aren't doubled and fit in its sockets
+local function sanitizeSkillRunes(raw: any): { [string]: { ItemData.Item } }
+	local result = {}
+	for skillId, skill in pairs(SkillData) do
+		local socketed = {}
+		local seen = {}
+		local list = if type(raw) == "table" then raw[skillId] else nil
+		if type(list) == "table" then
+			for _, rawItem in ipairs(list) do
+				local item = sanitizeItem(rawItem)
+				local runeId = if item then ItemData.getRuneId(item) else nil
+				if item and runeId and not seen[runeId] and RuneData.fits(runeId, skill.Shape) and #socketed < skill.Sockets then
+					seen[runeId] = true
+					table.insert(socketed, item)
+				end
+			end
+		end
+		result[skillId] = socketed
+	end
+	return result
+end
+
 local function buildProfile(data: any, canSave: boolean): Profile
 	local profile: Profile = {
 		Level = 1,
 		Exp = 0,
 		Inventory = {},
 		Equipped = {},
+		SkillRunes = sanitizeSkillRunes(nil),
 		Stats = PlayerStats.compute(1, {}),
 		CanSave = canSave,
 	}
 	if type(data) ~= "table" then
 		return profile -- New player (or load failed)
 	end
+	profile.SkillRunes = sanitizeSkillRunes(data.SkillRunes)
 
 	if type(data.Level) == "number" then
 		profile.Level = math.clamp(math.floor(data.Level), 1, PlayerStats.MAX_LEVEL)
@@ -180,6 +207,7 @@ local function saveProfile(player: Player, profile: Profile): boolean
 		Exp = profile.Exp,
 		Inventory = profile.Inventory,
 		Equipped = profile.Equipped,
+		SkillRunes = profile.SkillRunes,
 	}
 
 	pendingSaves += 1
@@ -229,6 +257,12 @@ local function refreshStats(player: Player, profile: Profile, healToFull: boolea
 	player:SetAttribute("EnergyShieldRecharge", profile.Stats.EnergyShieldRecharge)
 	player:SetAttribute("FlatDamage", profile.Stats.FlatDamage)
 	player:SetAttribute("AttackSpeed", profile.Stats.AttackSpeed)
+	player:SetAttribute("FireDamage", profile.Stats.FireDamage)
+	player:SetAttribute("ColdDamage", profile.Stats.ColdDamage)
+	player:SetAttribute("LightningDamage", profile.Stats.LightningDamage)
+	player:SetAttribute("FireResistance", profile.Stats.FireResistance)
+	player:SetAttribute("ColdResistance", profile.Stats.ColdResistance)
+	player:SetAttribute("LightningResistance", profile.Stats.LightningResistance)
 
 	applyToCharacter(player, profile, healToFull)
 end
@@ -237,8 +271,19 @@ local function sync(player: Player, profile: Profile)
 	inventoryRemote:FireClient(player, "Sync", {
 		Inventory = profile.Inventory,
 		Equipped = profile.Equipped,
+		SkillRunes = profile.SkillRunes,
 		Capacity = INVENTORY_CAPACITY,
 	})
+
+	-- Socketed runes also go out as "SkillRunes_<skillId>" = "Reach,Ember" attributes, so every client
+	-- can draw this player's skills with them (CombatClient)
+	for skillId in pairs(SkillData) do
+		local runeIds = {}
+		for _, item in ipairs(profile.SkillRunes[skillId] or {}) do
+			table.insert(runeIds, ItemData.getRuneId(item) or "")
+		end
+		player:SetAttribute("SkillRunes_" .. skillId, table.concat(runeIds, ","))
+	end
 end
 
 -- ==========================================
@@ -260,6 +305,10 @@ local function equip(player: Player, profile: Profile, itemId: string)
 	end
 	local item = profile.Inventory[index]
 	local base = ItemData.Bases[item.Base]
+	if base.Slot == "Rune" then
+		PlayerData.notify(player, "Runes go into skill sockets (bottom of the inventory)", WARNING_COLOR)
+		return
+	end
 	local slot = ItemData.getTargetSlot(base.Slot, profile.Equipped)
 
 	-- 1. Trying to equip an OffHand item while MainHand forbids OffHand
@@ -314,7 +363,80 @@ local function discard(profile: Profile, itemId: string)
 	end
 end
 
-local function onInventoryRequest(player: Player, action: any, arg: any)
+-- Moves a rune from the inventory into a skill's next free socket.
+-- skillId = nil: the first skill (A-Z) it fits that has room (Shift+Click / Auto-Socket)
+local function socketRune(player: Player, profile: Profile, itemId: string, skillId: string?)
+	local index = findInInventory(profile, itemId)
+	local item = if index then profile.Inventory[index] else nil
+	local runeId = if item then ItemData.getRuneId(item) else nil
+	if not index or not item or not runeId then
+		return
+	end
+
+	-- Returns the reason when the rune can't go into this skill
+	local function whyNot(id: string): string?
+		local skill = SkillData[id]
+		local socketed = profile.SkillRunes[id]
+		if not skill or not socketed then
+			return "Unknown skill"
+		elseif not RuneData.fits(runeId, skill.Shape) then
+			return ("%s doesn't fit %s"):format(ItemData.getName(item), skill.Name)
+		elseif #socketed >= skill.Sockets then
+			return skill.Name .. " has no free socket"
+		end
+		for _, other in ipairs(socketed) do
+			if ItemData.getRuneId(other) == runeId then
+				return skill.Name .. " already has this rune"
+			end
+		end
+		return nil
+	end
+
+	local target = skillId
+	if target then
+		local reason = whyNot(target)
+		if reason then
+			PlayerData.notify(player, reason, WARNING_COLOR)
+			return
+		end
+	else
+		local skillIds = {}
+		for id in pairs(SkillData) do
+			table.insert(skillIds, id)
+		end
+		table.sort(skillIds)
+		for _, id in ipairs(skillIds) do
+			if not whyNot(id) then
+				target = id
+				break
+			end
+		end
+		if not target then
+			PlayerData.notify(player, "No skill has a free socket for this rune", WARNING_COLOR)
+			return
+		end
+	end
+
+	table.remove(profile.Inventory, index)
+	table.insert(profile.SkillRunes[target], item)
+end
+
+-- Takes a rune out of a skill back into the inventory (sockets after it shift left)
+local function unsocketRune(player: Player, profile: Profile, skillId: string, socketIndex: number)
+	local socketed = profile.SkillRunes[skillId]
+	local item = if socketed then socketed[socketIndex] else nil
+	if not socketed or not item then
+		return
+	end
+	if #profile.Inventory >= INVENTORY_CAPACITY then
+		PlayerData.notify(player, "Inventory is full!", WARNING_COLOR)
+		return
+	end
+	table.remove(socketed, socketIndex)
+	table.insert(profile.Inventory, item)
+end
+
+local function onInventoryRequest(player: Player, action: any, arg: any, arg2: any)
 	local profile = profiles[player]
 	if not profile then
 		return
@@ -326,6 +448,10 @@ local function onInventoryRequest(player: Player, action: any, arg: any)
 		unequip(player, profile, arg)
 	elseif action == "Discard" and type(arg) == "string" then
 		discard(profile, arg)
+	elseif action == "Socket" and type(arg) == "string" and (arg2 == nil or type(arg2) == "string") then
+		socketRune(player, profile, arg, arg2)
+	elseif action == "Unsocket" and type(arg) == "string" and type(arg2) == "number" then
+		unsocketRune(player, profile, arg, arg2)
 	elseif action ~= "RequestSync" then
 		return
 	end
@@ -340,6 +466,20 @@ end
 function PlayerData.getStats(player: Player): PlayerStats.Stats
 	local profile = profiles[player]
 	return if profile then profile.Stats else PlayerStats.compute(1, {})
+end
+
+-- Rune ids socketed in a skill as a set, e.g. { Reach = true, Ember = true } (CombatServer applies them)
+function PlayerData.getSkillRunes(player: Player, skillId: string): { [string]: boolean }
+	local runes = {}
+	local profile = profiles[player]
+	local socketed = if profile then profile.SkillRunes[skillId] else nil
+	for _, item in ipairs(socketed or {}) do
+		local runeId = ItemData.getRuneId(item)
+		if runeId then
+			runes[runeId] = true
+		end
+	end
+	return runes
 end
 
 -- Message at the top of the screen. player = nil sends it to everyone

@@ -9,8 +9,10 @@ local TweenService = game:GetService("TweenService")
 
 local EnemyData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("EnemyData"))
 local PlayerStats = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PlayerStats"))
+local Elements = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Elements"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
 local PlayerResources = require(script.Parent:WaitForChild("PlayerResources"))
+local Ailments = require(script.Parent:WaitForChild("Ailments"))
 local Loot = require(script.Parent:WaitForChild("Loot"))
 
 local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CombatRemote") :: RemoteEvent
@@ -366,7 +368,18 @@ end
 -- ==========================================
 -- 4. ATTACKS (windup first, so players can see it coming and dodge)
 -- ==========================================
-local function damagePlayer(character: Model, amount: number)
+-- Players: energy shield takes the damage first (PlayerResources). element colors the damage number (nil = physical)
+local function hurtCharacter(character: Model, humanoid: Humanoid, amount: number, element: string?)
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		PlayerResources.takeDamage(player, humanoid, amount)
+	else
+		humanoid:TakeDamage(amount)
+	end
+	combatRemote:FireAllClients("DamageDealt", character, amount, false, element)
+end
+
+local function damagePlayer(character: Model, amount: number, element: string)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 or character:FindFirstChildOfClass("ForceField") then
 		return -- Dead, or spawn protection
@@ -374,14 +387,23 @@ local function damagePlayer(character: Model, amount: number)
 	if (character:GetAttribute("InvulnerableUntil") or 0) > os.clock() then
 		return -- Mid dodge roll (CombatServer sets this)
 	end
-	-- Players: energy shield takes the hit first (PlayerResources)
+
+	-- Elemental hits are reduced by the player's resistance (up to Elements.MAX_RESISTANCE)
+	local isElemental = element ~= "Physical"
 	local player = Players:GetPlayerFromCharacter(character)
-	if player then
-		PlayerResources.takeDamage(player, humanoid, amount)
-	else
-		humanoid:TakeDamage(amount)
+	if player and isElemental then
+		local resistance = (PlayerData.getStats(player) :: any)[element .. "Resistance"] or 0
+		amount *= 1 - math.min(resistance, Elements.MAX_RESISTANCE) / 100
 	end
-	combatRemote:FireAllClients("DamageDealt", character, amount, false)
+	-- Shocked players take more damage
+	hurtCharacter(character, humanoid, math.round(amount * Ailments.getDamageTakenMultiplier(character)), if isElemental then element else nil)
+
+	-- ...and inflict their ailment on the player (burning, chilled / frozen, shocked)
+	if isElemental then
+		Ailments.applyHit(character, humanoid, { [element] = amount }, function(burn: number)
+			hurtCharacter(character, humanoid, burn, "Fire")
+		end)
+	end
 end
 
 -- Stops walking and turns to look at a point (flat)
@@ -411,7 +433,8 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 
 	task.delay(attack.Windup, function()
 		state.Attacking = false
-		if state.Dead then
+		-- Died, or got frozen during the windup: the attack is cancelled
+		if state.Dead or Ailments.isFrozen(state.Model) then
 			return
 		end
 
@@ -421,13 +444,13 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 				local character = player.Character
 				local playerRoot = getAliveRoot(character)
 				if character and playerRoot and flatDistance(playerRoot.Position, ground) <= radius then
-					damagePlayer(character, damage)
+					damagePlayer(character, damage, attack.Element)
 				end
 			end
 		else
 			local currentRoot = getAliveRoot(target)
 			if currentRoot and flatDistance(currentRoot.Position, root.Position) <= attack.Range + MELEE_REACH_BONUS then
-				damagePlayer(target, damage)
+				damagePlayer(target, damage, attack.Element)
 			end
 		end
 	end)
@@ -523,6 +546,9 @@ end
 local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastParams)
 	if state.Dead or state.Attacking then
 		return
+	end
+	if Ailments.isFrozen(state.Model) then
+		return -- Frozen: can't move (Ailments set its speed to 0) or start an attack until it thaws
 	end
 	local data = state.Data
 	local humanoid = state.Humanoid

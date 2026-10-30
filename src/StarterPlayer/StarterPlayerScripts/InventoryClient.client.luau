@@ -1,10 +1,11 @@
 -- ==========================================
--- INVENTORY CLIENT (Inventory window: view items, equip / unequip / discard)
+-- INVENTORY CLIENT (Inventory window: view items, equip / unequip / discard, skill rune sockets, Shift+Click and X hotkeys)
 -- Path: StarterPlayer.StarterPlayerScripts.InventoryClient
 -- ==========================================
 -- The server owns the inventory. This script only shows the last "Sync" and sends requests
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
@@ -14,26 +15,41 @@ local inventoryRemote = remotesFolder:WaitForChild("InventoryRemote") :: RemoteE
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local ItemData = require(modulesFolder:WaitForChild("ItemData"))
+local SkillData = require(modulesFolder:WaitForChild("SkillData"))
+local RuneData = require(modulesFolder:WaitForChild("RuneData"))
+local Elements = require(modulesFolder:WaitForChild("Elements"))
 local Ui = require(modulesFolder:WaitForChild("Ui"))
 
 -- ==========================================
 -- CONFIGURATION
 -- ==========================================
 local TOGGLE_KEY = Enum.KeyCode.B
+local DISCARD_KEY = Enum.KeyCode.X -- Discards the inventory item under the mouse right away (no confirm)
+-- Hold Shift while clicking: inventory item = equip right away (rune = socket), equipped slot / socket = take out
 local GRID_COLUMNS = 5
 local CELL_SIZE = 54
 local CELL_GAP = 6
 local SIDE_WIDTH = 200
 local CONTENT_HEIGHT = 340
+local RUNE_STRIP_HEIGHT = 70 -- Skill rune sockets along the bottom of the window
+local SOCKET_SIZE = 40
 local GRID_WIDTH = GRID_COLUMNS * CELL_SIZE + (GRID_COLUMNS - 1) * CELL_GAP
 local WINDOW_WIDTH = 12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12 + SIDE_WIDTH + 12
-local WINDOW_HEIGHT = 48 + CONTENT_HEIGHT + 12
+local WINDOW_HEIGHT = 48 + CONTENT_HEIGHT + 12 + RUNE_STRIP_HEIGHT
+
+-- Skills in the rune strip, A-Z (the same order the server's Auto-Socket tries them)
+local SKILL_ORDER: { string } = {}
+for skillId in pairs(SkillData) do
+	table.insert(SKILL_ORDER, skillId)
+end
+table.sort(SKILL_ORDER)
 
 -- ==========================================
 -- STATE (replaced by every "Sync" from the server)
 -- ==========================================
 local inventory: { ItemData.Item } = {}
 local equipped: { [string]: ItemData.Item } = {}
+local skillRunes: { [string]: { ItemData.Item } } = {} -- Runes socketed in each skill, in socket order
 local capacity = 20
 local selectedId: string? = nil
 local confirmingDiscard = false
@@ -56,6 +72,18 @@ local function findItem(itemId: string?): (ItemData.Item?, string?)
 		end
 	end
 	return nil, nil
+end
+
+-- A rune socketed in a skill: returns it, the skill and the socket number
+local function findSocketed(itemId: string?): (ItemData.Item?, string?, number?)
+	for skillId, socketed in pairs(skillRunes) do
+		for index, item in ipairs(socketed) do
+			if item.Id == itemId then
+				return item, skillId, index
+			end
+		end
+	end
+	return nil, nil, nil
 end
 
 local function getRarityColor(item: ItemData.Item): Color3
@@ -107,6 +135,18 @@ Ui.text({
 	Text = "Inventory & Equipment [B]",
 	TextSize = 20,
 	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = window,
+})
+-- Hotkey hint (PC only: phones have no Shift / X)
+Ui.text({
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -52, 0, 8),
+	Size = UDim2.fromOffset(320, 32),
+	Text = "Shift+Click: Equip / Unequip   |   X: Discard",
+	TextSize = 13,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Right,
+	Visible = not isTouchOnly,
 	Parent = window,
 })
 local closeButton = Ui.button({
@@ -195,7 +235,8 @@ local statsTopY = 24 + 4 * (SLOT_SIZE + SLOT_GAP) + 2
 local statsLabel = Ui.text({
 	Position = UDim2.fromOffset(0, statsTopY),
 	Size = UDim2.new(1, 0, 1, -statsTopY),
-	TextSize = 13,
+	TextSize = 11, -- 5 lines have to fit under the slots
+	RichText = true, -- Elemental numbers in their element's color
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextYAlignment = Enum.TextYAlignment.Top,
 	Text = "",
@@ -264,6 +305,79 @@ local discardButton = Ui.button({
 	Parent = detailColumn,
 }, { Ui.corner(6) })
 
+-- Bottom: stone rune sockets of each skill (round). Select a rune in the bag, then click an empty socket
+local runeStrip = Ui.new("Frame", {
+	Name = "SkillRunes",
+	Position = UDim2.fromOffset(12, 48 + CONTENT_HEIGHT + 4),
+	Size = UDim2.new(1, -24, 0, RUNE_STRIP_HEIGHT - 12),
+	BackgroundTransparency = 1,
+	Parent = window,
+}, {
+	Ui.new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		Padding = UDim.new(0, 24),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
+Ui.text({
+	LayoutOrder = 0,
+	Size = UDim2.fromOffset(70, SOCKET_SIZE),
+	Text = "SKILL\nRUNES",
+	TextSize = 14,
+	TextColor3 = ItemData.Rarities.Rune.Color,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = runeStrip,
+})
+
+local socketButtons: { [string]: { TextButton } } = {}
+for order, skillId in ipairs(SKILL_ORDER) do
+	local skill = SkillData[skillId]
+	local group = Ui.new("Frame", {
+		LayoutOrder = order,
+		Size = UDim2.fromOffset(math.max(skill.Sockets * (SOCKET_SIZE + 6), 90), SOCKET_SIZE + 18),
+		BackgroundTransparency = 1,
+		Parent = runeStrip,
+	})
+	Ui.text({
+		Size = UDim2.new(1, 0, 0, 16),
+		Text = skill.Name,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = group,
+	})
+	socketButtons[skillId] = {}
+	for index = 1, skill.Sockets do
+		socketButtons[skillId][index] = Ui.button({
+			Name = "Socket" .. index,
+			Position = UDim2.fromOffset((index - 1) * (SOCKET_SIZE + 6), 18),
+			Size = UDim2.fromOffset(SOCKET_SIZE, SOCKET_SIZE),
+			TextScaled = true,
+			Parent = group,
+		}, {
+			Ui.corner(SOCKET_SIZE / 2),
+			Ui.stroke(Ui.Colors.Stroke, 1.5),
+			Ui.new("UIPadding", {
+				PaddingLeft = UDim.new(0, 3),
+				PaddingRight = UDim.new(0, 3),
+			}),
+			Ui.new("UITextSizeConstraint", { MaxTextSize = 14 }),
+		})
+	end
+end
+Ui.text({
+	LayoutOrder = #SKILL_ORDER + 1,
+	Size = UDim2.fromOffset(260, SOCKET_SIZE),
+	Text = if isTouchOnly
+		then "Select a rune, then tap an empty socket"
+		else "Select a rune, then click an empty socket\nShift+Click a rune: socket / take out",
+	TextSize = 12,
+	TextColor3 = Ui.Colors.TextDim,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = runeStrip,
+})
+
 -- ==========================================
 -- 2. RENDERING (rebuilt from state after every change)
 -- ==========================================
@@ -273,6 +387,10 @@ local function selectItem(itemId: string?)
 	selectedId = itemId
 	confirmingDiscard = false
 	render()
+end
+
+local function isShiftDown(): boolean
+	return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 end
 
 local function renderGrid()
@@ -305,7 +423,16 @@ local function renderGrid()
 			}),
 		})
 		if item then
+			cell:SetAttribute("ItemId", item.Id) -- Lets the X hotkey find which item is under the mouse
 			cell.Activated:Connect(function()
+				-- Shift + click: equip right away, or socket a rune into the first skill it fits
+				-- (the server says why if it can't, e.g. Off-Hand locked / no free socket)
+				if isShiftDown() then
+					selectedId = item.Id
+					confirmingDiscard = false
+					inventoryRemote:FireServer(if ItemData.getRuneId(item) then "Socket" else "Equip", item.Id)
+					return
+				end
 				selectItem(item.Id)
 			end)
 		end
@@ -332,20 +459,95 @@ local function renderEquipped()
 end
 
 local function renderStats()
+	-- Fire / Cold / Lightning values side by side, each in its element's color
+	local function elementLine(prefix: string, suffix: string, format: string): string
+		local parts = {}
+		for _, element in ipairs(Elements.Types) do
+			local value = player:GetAttribute(element .. suffix) or 0
+			table.insert(parts, string.format('<font color="#%s">' .. format .. "</font>", Elements.Colors[element]:ToHex(), value))
+		end
+		return prefix .. table.concat(parts, " / ")
+	end
+
 	statsLabel.Text = string.format(
-		"Lv %d  |  HP %d  |  MP %d\nDMG +%d  |  ATK SPD +%d%%\nES %d  |  ES RECHARGE +%d%%",
+		"Lv %d  |  HP %d  |  MP %d\nDMG +%d  |  ATK SPD +%d%%\nES %d  |  ES RECHARGE +%d%%\n%s\n%s",
 		player:GetAttribute("Level") or 1,
 		player:GetAttribute("MaxHealth") or 100,
 		player:GetAttribute("MaxMana") or 50,
 		player:GetAttribute("FlatDamage") or 0,
 		player:GetAttribute("AttackSpeed") or 0,
 		player:GetAttribute("MaxEnergyShield") or 0,
-		player:GetAttribute("EnergyShieldRecharge") or 0
+		player:GetAttribute("EnergyShieldRecharge") or 0,
+		elementLine("ELE DMG ", "Damage", "+%d"),
+		elementLine("RES ", "Resistance", "%d%%")
 	)
+end
+
+local function renderRunes()
+	-- A rune selected in the bag lights up the empty sockets it can go into
+	local selected, equippedSlot = findItem(selectedId)
+	local selectedRune = if selected and not equippedSlot then ItemData.getRuneId(selected) else nil
+
+	for skillId, buttons in pairs(socketButtons) do
+		local socketed = skillRunes[skillId] or {}
+		local canTake = selectedRune ~= nil and RuneData.fits(selectedRune, SkillData[skillId].Shape)
+		for _, item in ipairs(socketed) do
+			if ItemData.getRuneId(item) == selectedRune then
+				canTake = false -- One of each rune per skill
+			end
+		end
+
+		for index, button in ipairs(buttons) do
+			local item = socketed[index]
+			if item then
+				button.Text = ItemData.getRuneId(item) or "?"
+				button.TextColor3 = getRarityColor(item)
+				button.BackgroundColor3 = if item.Id == selectedId
+					then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
+					else Ui.Colors.PanelLight
+			else
+				local runeColor = ItemData.Rarities.Rune.Color
+				button.Text = "+"
+				button.TextColor3 = if canTake then runeColor else Ui.Colors.TextDim
+				button.BackgroundColor3 = if canTake then runeColor:Lerp(Ui.Colors.Panel, 0.75) else Ui.Colors.Panel
+			end
+		end
+	end
+end
+
+-- Stone runes show what they do and which skills they fit instead of stats
+local function renderRuneDetails(item: ItemData.Item, runeId: string, socketSkill: string?)
+	local rune = RuneData.Runes[runeId]
+	local dim = Ui.Colors.TextDim:ToHex()
+	detailName.Text = rune.Name
+	detailName.TextColor3 = getRarityColor(item)
+	detailInfo.Text = if socketSkill then "Socketed in " .. SkillData[socketSkill].Name else "Stone Rune"
+
+	local fits = {}
+	for _, skillId in ipairs(SKILL_ORDER) do
+		if RuneData.fits(runeId, SkillData[skillId].Shape) then
+			table.insert(fits, SkillData[skillId].Name)
+		end
+	end
+	local lines = { rune.Description, "", string.format('<font color="#%s">Fits: %s</font>', dim, table.concat(fits, ", ")) }
+	if not socketSkill then
+		table.insert(lines, string.format('<font color="#%s">Click an empty socket below to put it in a skill</font>', dim))
+	end
+	detailLines.Text = table.concat(lines, "\n")
+
+	actionButton.Visible = true
+	actionButton.Text = if socketSkill then "Remove from Skill" else "Auto-Socket"
+	actionButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
+	discardButton.Visible = socketSkill == nil
+	discardButton.Text = if confirmingDiscard then "Click Again to Confirm" else "Discard"
 end
 
 local function renderDetails()
 	local item, equippedSlot = findItem(selectedId)
+	local socketSkill: string? = nil
+	if not item then
+		item, socketSkill = findSocketed(selectedId)
+	end
 	if not item then
 		detailName.Text = "Select an item to view details"
 		detailName.TextColor3 = Ui.Colors.TextDim
@@ -353,6 +555,12 @@ local function renderDetails()
 		detailLines.Text = ""
 		actionButton.Visible = false
 		discardButton.Visible = false
+		return
+	end
+
+	local runeId = ItemData.getRuneId(item)
+	if runeId then
+		renderRuneDetails(item, runeId, socketSkill)
 		return
 	end
 
@@ -404,6 +612,7 @@ end
 function render()
 	renderGrid()
 	renderEquipped()
+	renderRunes()
 	renderStats()
 	renderDetails()
 end
@@ -414,17 +623,49 @@ end
 for slot, button in pairs(slotButtons) do
 	button.Activated:Connect(function()
 		local item = equipped[slot]
+		-- Shift + click an equipped item: take it off right away
+		if item and isShiftDown() then
+			inventoryRemote:FireServer("Unequip", slot)
+		end
 		selectItem(if item then item.Id else nil)
 	end)
+end
+
+for skillId, buttons in pairs(socketButtons) do
+	for index, button in ipairs(buttons) do
+		button.Activated:Connect(function()
+			local item = (skillRunes[skillId] or {})[index]
+			if item then
+				-- Shift + click a socketed rune: take it out right away
+				if isShiftDown() then
+					inventoryRemote:FireServer("Unsocket", skillId, index)
+				end
+				selectItem(item.Id)
+				return
+			end
+			-- Empty socket: put the rune selected in the bag into this skill (the server checks it fits)
+			local selected, equippedSlot = findItem(selectedId)
+			if selected and not equippedSlot and ItemData.getRuneId(selected) then
+				inventoryRemote:FireServer("Socket", selected.Id, skillId)
+			end
+		end)
+	end
 end
 
 actionButton.Activated:Connect(function()
 	local item, equippedSlot = findItem(selectedId)
 	if not item then
+		-- A socketed rune: take it out of its skill
+		local _, socketSkill, socketIndex = findSocketed(selectedId)
+		if socketSkill and socketIndex then
+			inventoryRemote:FireServer("Unsocket", socketSkill, socketIndex)
+		end
 		return
 	end
 	if equippedSlot then
 		inventoryRemote:FireServer("Unequip", equippedSlot)
+	elseif ItemData.getRuneId(item) then
+		inventoryRemote:FireServer("Socket", item.Id) -- Auto-Socket: first skill it fits with a free socket
 	else
 		inventoryRemote:FireServer("Equip", item.Id)
 	end
@@ -460,12 +701,42 @@ closeButton.Activated:Connect(function()
 	setOpen(false)
 end)
 
+-- Inventory item under the mouse (grid cells carry their item's id in the ItemId attribute)
+local function getHoveredItemId(): string?
+	-- Mouse location counts the top bar, GUI positions don't
+	local mouse = UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
+	local function isOver(object: GuiObject): boolean
+		local topLeft, size = object.AbsolutePosition, object.AbsoluteSize
+		return mouse.X >= topLeft.X and mouse.X <= topLeft.X + size.X and mouse.Y >= topLeft.Y and mouse.Y <= topLeft.Y + size.Y
+	end
+	if not isOver(grid) then
+		return nil -- Also skips cells scrolled out of view
+	end
+	for _, cell in ipairs(grid:GetChildren()) do
+		local itemId = cell:GetAttribute("ItemId")
+		if itemId and cell:IsA("GuiObject") and isOver(cell) then
+			return itemId
+		end
+	end
+	return nil
+end
+
 UserInputService.InputBegan:Connect(function(input: InputObject)
 	if UserInputService:GetFocusedTextBox() then
 		return
 	end
 	if input.KeyCode == TOGGLE_KEY then
 		setOpen(not window.Visible)
+	elseif input.KeyCode == DISCARD_KEY and window.Visible then
+		-- X over an item: throw it away right away (equipped items aren't in the grid, so they're safe)
+		local itemId = getHoveredItemId()
+		if itemId then
+			inventoryRemote:FireServer("Discard", itemId)
+			if selectedId == itemId then
+				selectedId = nil
+			end
+			confirmingDiscard = false
+		end
 	end
 end)
 
@@ -484,8 +755,9 @@ inventoryRemote.OnClientEvent:Connect(function(action: string, data: any)
 	end
 	inventory = data.Inventory or {}
 	equipped = data.Equipped or {}
+	skillRunes = data.SkillRunes or {}
 	capacity = data.Capacity or capacity
-	if not findItem(selectedId) then
+	if not findItem(selectedId) and not findSocketed(selectedId) then
 		selectedId = nil
 	end
 	if window.Visible then

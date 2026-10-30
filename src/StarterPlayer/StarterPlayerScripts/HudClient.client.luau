@@ -15,6 +15,7 @@ local notifyRemote = remotesFolder:WaitForChild("NotifyRemote") :: RemoteEvent
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local Ui = require(modulesFolder:WaitForChild("Ui"))
+local Elements = require(modulesFolder:WaitForChild("Elements"))
 
 -- ==========================================
 -- CONFIGURATION
@@ -25,6 +26,12 @@ local MAX_NOTIFICATIONS = 5
 
 local isTouchOnly = Ui.isTouchOnly()
 local gui = Ui.screenGui("Hud", 0)
+
+-- Ailment attributes (Ignited / Chilled / Frozen / Shocked) the server sets on enemies and characters
+local AILMENT_ATTRIBUTES: { [string]: boolean } = {}
+for _, ailment in ipairs(Elements.AilmentLabels) do
+	AILMENT_ATTRIBUTES[ailment.Attribute] = true
+end
 
 -- Our own health bar replaces Roblox's default one
 pcall(function()
@@ -113,6 +120,18 @@ local function updateEnergyShield()
 		shieldText.Text = string.format("ES %d / %d", shield, maxShield)
 	end
 end
+
+-- Our own ailments (e.g. burning from the boss): PC above the bars / mobile below them
+local playerAilments = Ui.text({
+	Name = "Ailments",
+	Position = if isTouchOnly then UDim2.fromOffset(68, 70) else UDim2.fromOffset(68, -18),
+	Size = UDim2.fromOffset(232, 16),
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	RichText = true,
+	Text = "",
+	Parent = playerPanel,
+})
 
 for _, attributeName in ipairs({ "Mana", "MaxMana" }) do
 	player:GetAttributeChangedSignal(attributeName):Connect(updateMana)
@@ -205,6 +224,12 @@ local function onCharacterAdded(character: Model)
 		updateHealth(humanoid)
 	end
 	refresh()
+	playerAilments.Text = Elements.formatAilments(character)
+	table.insert(characterConnections, character.AttributeChanged:Connect(function(name: string)
+		if AILMENT_ATTRIBUTES[name] then
+			playerAilments.Text = Elements.formatAilments(character)
+		end
+	end))
 	table.insert(characterConnections, humanoid.HealthChanged:Connect(refresh))
 	table.insert(characterConnections, humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(refresh))
 	table.insert(characterConnections, humanoid.Died:Connect(showDeathScreen))
@@ -231,6 +256,7 @@ local bossName = Ui.text({
 	Size = UDim2.new(1, 0, 0, 20),
 	TextSize = 18,
 	TextColor3 = Color3.fromRGB(255, 215, 70),
+	RichText = true, -- Ailments after the name are colored
 	Text = "",
 	Parent = bossFrame,
 })
@@ -258,19 +284,28 @@ local function trackEnemy(model: Instance)
 		return
 	end
 
-	-- Small bar floating above the head. Parented to the enemy so it disappears with it
+	-- Small bar floating above the head, with its ailments written above it. Parented to the enemy so it
+	-- disappears with it
 	local boxCFrame, boxSize = model:GetBoundingBox()
 	local headHeight = boxCFrame.Position.Y + boxSize.Y / 2 - root.Position.Y
 	local billboard = Ui.new("BillboardGui", {
 		Name = "HealthBar",
-		Size = UDim2.new(4, 0, 0.4, 0), -- Studs
-		StudsOffsetWorldSpace = Vector3.new(0, headHeight + 0.8, 0),
+		Size = UDim2.new(4, 0, 0.9, 0), -- Studs: ailment text on top, 0.4 studs of bar below
+		StudsOffsetWorldSpace = Vector3.new(0, headHeight + 1.05, 0),
 		AlwaysOnTop = true,
 		MaxDistance = 120,
 		Parent = root,
 	})
-	local fill, label = makeBar(billboard, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), Ui.Colors.Health)
+	local fill, label = makeBar(billboard, UDim2.fromScale(0, 0.55), UDim2.fromScale(1, 0.45), Ui.Colors.Health)
 	label.Visible = false
+	local ailmentText = Ui.text({
+		Name = "Ailments",
+		Size = UDim2.fromScale(1, 0.5),
+		TextScaled = true,
+		RichText = true,
+		Text = "",
+		Parent = billboard,
+	})
 
 	local function update()
 		fill.Size = UDim2.fromScale(math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1), 1)
@@ -279,6 +314,11 @@ local function trackEnemy(model: Instance)
 	update()
 	humanoid.HealthChanged:Connect(update)
 	humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(update) -- Rescaled when players join/leave
+	model.AttributeChanged:Connect(function(name: string)
+		if AILMENT_ATTRIBUTES[name] then
+			ailmentText.Text = Elements.formatAilments(model)
+		end
+	end)
 end
 
 local enemiesFolder = workspace:WaitForChild("Enemies")
@@ -313,7 +353,9 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if shownBoss and shownHumanoid then
-		bossName.Text = shownBoss:GetAttribute("DisplayName") or shownBoss.Name
+		local ailments = Elements.formatAilments(shownBoss)
+		local name = shownBoss:GetAttribute("DisplayName") or shownBoss.Name
+		bossName.Text = if ailments ~= "" then name .. "  " .. ailments else name
 		bossFill.Size = UDim2.fromScale(math.clamp(shownHumanoid.Health / shownHumanoid.MaxHealth, 0, 1), 1)
 		bossText.Text = string.format("%d / %d", math.ceil(shownHumanoid.Health), math.floor(shownHumanoid.MaxHealth))
 	end
