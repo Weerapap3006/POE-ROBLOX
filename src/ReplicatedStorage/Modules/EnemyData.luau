@@ -15,6 +15,8 @@ export type EnemyType = {
 	LeashRange: number, -- Gives up and walks home (healing to full) when pulled this far from its spawn
 	Attack: {
 		Kind: "Melee" | "Slam",
+		-- Fire / Cold / Lightning hits are reduced by the player's resistance and inflict ailments (see Elements)
+		Element: "Physical" | "Fire" | "Cold" | "Lightning",
 		Range: number, -- Starts the attack when the target is this close
 		Radius: number?, -- Slam only: damage circle around the enemy
 		Windup: number, -- Seconds of warning before the hit lands (time for players to dodge)
@@ -28,12 +30,16 @@ export type EnemyType = {
 		Rolls: number, -- How many times to roll for an item
 		Chance: number, -- Chance per roll to drop an item (0-1)
 		RarityWeights: { [string]: number }, -- Weight per rarity in ItemData.Rarities
+		-- Expected counts (0.1 = 10% for one, 2 = two). A Stone Tablet run adds its loot bonus on top (TabletData)
+		RuneChance: number, -- Random stone rune (RuneData)
+		StoneChance: number, -- Random crafting stone (StoneData)
+		TabletChance: number, -- Stone Tablet (Tier 1 from a plain run, the run's tier from a tablet run)
 	},
 }
 
 local EnemyData: { [string]: EnemyType } = {
 	Grunt = {
-		DisplayName = "ภูตหิน",
+		DisplayName = "Stone Grunt",
 		IsBoss = false,
 		MaxHealth = 120,
 		WalkSpeed = 13, -- Slower than the player (18) so you can kite
@@ -44,6 +50,7 @@ local EnemyData: { [string]: EnemyType } = {
 		LeashRange = 70,
 		Attack = {
 			Kind = "Melee",
+			Element = "Physical",
 			Range = 4.5,
 			Windup = 0.45,
 			Cooldown = 1.6,
@@ -56,10 +63,13 @@ local EnemyData: { [string]: EnemyType } = {
 			Rolls = 1,
 			Chance = 0.4,
 			RarityWeights = { Normal = 60, Magic = 32, Rare = 8 },
+			RuneChance = 0.1,
+			StoneChance = 0.15,
+			TabletChance = 0.02,
 		},
 	},
 	Brute = {
-		DisplayName = "ยักษ์หินผู้พิทักษ์",
+		DisplayName = "Stone Guardian",
 		IsBoss = true,
 		MaxHealth = 1500,
 		WalkSpeed = 10,
@@ -70,6 +80,7 @@ local EnemyData: { [string]: EnemyType } = {
 		LeashRange = 90,
 		Attack = {
 			Kind = "Slam",
+			Element = "Fire", -- Burns players it hits; Fire Resistance helps
 			Range = 9,
 			Radius = 12,
 			Windup = 1.0,
@@ -83,6 +94,9 @@ local EnemyData: { [string]: EnemyType } = {
 			Rolls = 3,
 			Chance = 1,
 			RarityWeights = { Magic = 50, Rare = 50 },
+			RuneChance = 1, -- The boss always drops a rune,
+			StoneChance = 2, -- two crafting stones
+			TabletChance = 1, -- and a Stone Tablet
 		},
 	},
 }

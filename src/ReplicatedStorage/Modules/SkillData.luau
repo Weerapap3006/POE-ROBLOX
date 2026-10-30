@@ -4,9 +4,12 @@
 -- ==========================================
 -- Damage per hit = random(MinDamage, MaxDamage) + player's FlatDamage stat (level + items)
 -- Real cooldown = Cooldown / (1 + AttackSpeed% / 100) (AttackSpeed comes from items)
+-- ManaCost is paid on every use (not enough mana = the skill doesn't fire)
 export type Skill = {
 	Name: string,
 	Cooldown: number,
+	ManaCost: number,
+	Sockets: number, -- How many stone runes fit in this skill (see RuneData)
 	MinDamage: number,
 	MaxDamage: number,
 	CritChance: number,
@@ -19,8 +22,10 @@ export type Skill = {
 
 local SkillData: { [string]: Skill } = {
 	BasicSlash = {
-		Name = "ฟัน",
+		Name = "Slash",
 		Cooldown = 0.55, -- Seconds between attacks
+		ManaCost = 0, -- Basic attack is free, so running out of mana never leaves you without an attack
+		Sockets = 2,
 		MinDamage = 26,
 		MaxDamage = 50,
 		CritChance = 0.25, -- 25% chance
@@ -30,8 +35,10 @@ local SkillData: { [string]: Skill } = {
 		HitboxForwardOffset = 5.0,
 	},
 	SpinSlash = {
-		Name = "หมุนฟัน",
+		Name = "Spin Slash",
 		Cooldown = 3.0,
+		ManaCost = 15,
+		Sockets = 3,
 		MinDamage = 40,
 		MaxDamage = 70,
 		CritChance = 0.15,

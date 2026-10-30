@@ -1,5 +1,5 @@
 -- ==========================================
--- HUD CLIENT (Health / EXP bars, enemy health bars, boss bar, notifications, death screen)
+-- HUD CLIENT (Energy Shield / Health / Mana / EXP bars, enemy health bars, boss bar, notifications, death screen)
 -- Path: StarterPlayer.StarterPlayerScripts.HudClient
 -- ==========================================
 local Players = game:GetService("Players")
@@ -15,6 +15,7 @@ local notifyRemote = remotesFolder:WaitForChild("NotifyRemote") :: RemoteEvent
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local Ui = require(modulesFolder:WaitForChild("Ui"))
+local Elements = require(modulesFolder:WaitForChild("Elements"))
 
 -- ==========================================
 -- CONFIGURATION
@@ -25,6 +26,12 @@ local MAX_NOTIFICATIONS = 5
 
 local isTouchOnly = Ui.isTouchOnly()
 local gui = Ui.screenGui("Hud", 0)
+
+-- Ailment attributes (Ignited / Chilled / Frozen / Shocked) the server sets on enemies and characters
+local AILMENT_ATTRIBUTES: { [string]: boolean } = {}
+for _, ailment in ipairs(Elements.AilmentLabels) do
+	AILMENT_ATTRIBUTES[ailment.Attribute] = true
+end
 
 -- Our own health bar replaces Roblox's default one
 pcall(function()
@@ -57,18 +64,19 @@ local function makeBar(parent: Instance, position: UDim2, size: UDim2, color: Co
 end
 
 -- ==========================================
--- 1. PLAYER HEALTH & EXP (PC: bottom-left / mobile: top-left, away from the thumbstick)
+-- 1. PLAYER ENERGY SHIELD, HEALTH, MANA & EXP (PC: bottom-left / mobile: top-left, away from the thumbstick)
 -- ==========================================
 local playerPanel = Ui.new("Frame", {
 	Name = "PlayerPanel",
 	AnchorPoint = if isTouchOnly then Vector2.new(0, 0) else Vector2.new(0, 1),
 	Position = if isTouchOnly then UDim2.fromOffset(12, 8) else UDim2.new(0, 16, 1, -16),
-	Size = UDim2.fromOffset(300, 60),
+	Size = UDim2.fromOffset(300, 68),
 	BackgroundTransparency = 1,
 	Parent = gui,
 })
 
 local levelBadge = Ui.text({
+	Position = UDim2.fromOffset(0, 4),
 	Size = UDim2.fromOffset(60, 60),
 	BackgroundTransparency = 0.15,
 	BackgroundColor3 = Ui.Colors.Panel,
@@ -78,9 +86,15 @@ local levelBadge = Ui.text({
 	Parent = playerPanel,
 }, { Ui.corner(30), Ui.stroke(Ui.Colors.Exp, 2) })
 
-local healthFill, healthText = makeBar(playerPanel, UDim2.fromOffset(68, 4), UDim2.fromOffset(232, 26), Ui.Colors.Health)
-local expFill, expText = makeBar(playerPanel, UDim2.fromOffset(68, 36), UDim2.fromOffset(232, 18), Ui.Colors.Exp)
-expText.TextSize = 12
+-- Energy shield bar only shows when gear gives energy shield
+local shieldFill, shieldText = makeBar(playerPanel, UDim2.fromOffset(68, 0), UDim2.fromOffset(232, 12), Ui.Colors.EnergyShield)
+local shieldBar = shieldFill.Parent :: Frame
+shieldText.TextSize = 10
+local healthFill, healthText = makeBar(playerPanel, UDim2.fromOffset(68, 14), UDim2.fromOffset(232, 24), Ui.Colors.Health)
+local manaFill, manaText = makeBar(playerPanel, UDim2.fromOffset(68, 40), UDim2.fromOffset(232, 14), Ui.Colors.Mana)
+manaText.TextSize = 11
+local expFill, expText = makeBar(playerPanel, UDim2.fromOffset(68, 56), UDim2.fromOffset(232, 12), Ui.Colors.Exp)
+expText.TextSize = 10
 
 local function updateHealth(humanoid: Humanoid)
 	local maxHealth = math.max(humanoid.MaxHealth, 1)
@@ -88,6 +102,45 @@ local function updateHealth(humanoid: Humanoid)
 	healthFill.Size = UDim2.fromScale(health / maxHealth, 1)
 	healthText.Text = string.format("%d / %d", math.ceil(health), math.floor(maxHealth))
 end
+
+-- Mana / energy shield come from player attributes set by the server (PlayerData = max, PlayerResources = current)
+local function updateMana()
+	local maxMana = math.max(player:GetAttribute("MaxMana") or 1, 1)
+	local mana = math.clamp(player:GetAttribute("Mana") or 0, 0, maxMana)
+	manaFill.Size = UDim2.fromScale(mana / maxMana, 1)
+	manaText.Text = string.format("%d / %d", mana, maxMana)
+end
+
+local function updateEnergyShield()
+	local maxShield = player:GetAttribute("MaxEnergyShield") or 0
+	shieldBar.Visible = maxShield > 0
+	if maxShield > 0 then
+		local shield = math.clamp(player:GetAttribute("EnergyShield") or 0, 0, maxShield)
+		shieldFill.Size = UDim2.fromScale(shield / maxShield, 1)
+		shieldText.Text = string.format("ES %d / %d", shield, maxShield)
+	end
+end
+
+-- Our own ailments (e.g. burning from the boss): PC above the bars / mobile below them
+local playerAilments = Ui.text({
+	Name = "Ailments",
+	Position = if isTouchOnly then UDim2.fromOffset(68, 70) else UDim2.fromOffset(68, -18),
+	Size = UDim2.fromOffset(232, 16),
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	RichText = true,
+	Text = "",
+	Parent = playerPanel,
+})
+
+for _, attributeName in ipairs({ "Mana", "MaxMana" }) do
+	player:GetAttributeChangedSignal(attributeName):Connect(updateMana)
+end
+for _, attributeName in ipairs({ "EnergyShield", "MaxEnergyShield" }) do
+	player:GetAttributeChangedSignal(attributeName):Connect(updateEnergyShield)
+end
+updateMana()
+updateEnergyShield()
 
 -- Level / EXP come from player attributes set by the server (PlayerData)
 local function updateExp()
@@ -120,7 +173,7 @@ Ui.text({
 	AnchorPoint = Vector2.new(0.5, 0.5),
 	Position = UDim2.fromScale(0.5, 0.42),
 	Size = UDim2.new(1, 0, 0, 60),
-	Text = "คุณตายแล้ว",
+	Text = "YOU DIED",
 	TextSize = 44,
 	TextColor3 = Ui.Colors.Health,
 	ZIndex = 11,
@@ -144,7 +197,7 @@ local function showDeathScreen()
 	deathScreen.Visible = true
 	task.spawn(function()
 		while deathScreen.Visible and thisDeath == deathCount do
-			respawnText.Text = string.format("เกิดใหม่ใน %d วินาที", math.max(0, math.ceil(respawnAt - os.clock())))
+			respawnText.Text = string.format("Respawning in %ds", math.max(0, math.ceil(respawnAt - os.clock())))
 			task.wait(0.2)
 		end
 	end)
@@ -171,6 +224,12 @@ local function onCharacterAdded(character: Model)
 		updateHealth(humanoid)
 	end
 	refresh()
+	playerAilments.Text = Elements.formatAilments(character)
+	table.insert(characterConnections, character.AttributeChanged:Connect(function(name: string)
+		if AILMENT_ATTRIBUTES[name] then
+			playerAilments.Text = Elements.formatAilments(character)
+		end
+	end))
 	table.insert(characterConnections, humanoid.HealthChanged:Connect(refresh))
 	table.insert(characterConnections, humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(refresh))
 	table.insert(characterConnections, humanoid.Died:Connect(showDeathScreen))
@@ -197,6 +256,7 @@ local bossName = Ui.text({
 	Size = UDim2.new(1, 0, 0, 20),
 	TextSize = 18,
 	TextColor3 = Color3.fromRGB(255, 215, 70),
+	RichText = true, -- Ailments after the name are colored
 	Text = "",
 	Parent = bossFrame,
 })
@@ -224,19 +284,28 @@ local function trackEnemy(model: Instance)
 		return
 	end
 
-	-- Small bar floating above the head. Parented to the enemy so it disappears with it
+	-- Small bar floating above the head, with its ailments written above it. Parented to the enemy so it
+	-- disappears with it
 	local boxCFrame, boxSize = model:GetBoundingBox()
 	local headHeight = boxCFrame.Position.Y + boxSize.Y / 2 - root.Position.Y
 	local billboard = Ui.new("BillboardGui", {
 		Name = "HealthBar",
-		Size = UDim2.new(4, 0, 0.4, 0), -- Studs
-		StudsOffsetWorldSpace = Vector3.new(0, headHeight + 0.8, 0),
+		Size = UDim2.new(4, 0, 0.9, 0), -- Studs: ailment text on top, 0.4 studs of bar below
+		StudsOffsetWorldSpace = Vector3.new(0, headHeight + 1.05, 0),
 		AlwaysOnTop = true,
 		MaxDistance = 120,
 		Parent = root,
 	})
-	local fill, label = makeBar(billboard, UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), Ui.Colors.Health)
+	local fill, label = makeBar(billboard, UDim2.fromScale(0, 0.55), UDim2.fromScale(1, 0.45), Ui.Colors.Health)
 	label.Visible = false
+	local ailmentText = Ui.text({
+		Name = "Ailments",
+		Size = UDim2.fromScale(1, 0.5),
+		TextScaled = true,
+		RichText = true,
+		Text = "",
+		Parent = billboard,
+	})
 
 	local function update()
 		fill.Size = UDim2.fromScale(math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1), 1)
@@ -245,6 +314,11 @@ local function trackEnemy(model: Instance)
 	update()
 	humanoid.HealthChanged:Connect(update)
 	humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(update) -- Rescaled when players join/leave
+	model.AttributeChanged:Connect(function(name: string)
+		if AILMENT_ATTRIBUTES[name] then
+			ailmentText.Text = Elements.formatAilments(model)
+		end
+	end)
 end
 
 local enemiesFolder = workspace:WaitForChild("Enemies")
@@ -279,7 +353,9 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	if shownBoss and shownHumanoid then
-		bossName.Text = shownBoss:GetAttribute("DisplayName") or shownBoss.Name
+		local ailments = Elements.formatAilments(shownBoss)
+		local name = shownBoss:GetAttribute("DisplayName") or shownBoss.Name
+		bossName.Text = if ailments ~= "" then name .. "  " .. ailments else name
 		bossFill.Size = UDim2.fromScale(math.clamp(shownHumanoid.Health / shownHumanoid.MaxHealth, 0, 1), 1)
 		bossText.Text = string.format("%d / %d", math.ceil(shownHumanoid.Health), math.floor(shownHumanoid.MaxHealth))
 	end

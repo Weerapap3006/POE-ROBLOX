@@ -1,5 +1,5 @@
 -- ==========================================
--- ENEMY SERVICE (Spawning, Chase/Attack AI, Damage, Death -> EXP & Loot)
+-- ENEMY SERVICE (Spawning, Chase/Attack AI, Damage, Death -> EXP, Flask Charges & Loot)
 -- Path: ServerStorage.Modules.EnemyService
 -- ==========================================
 local Players = game:GetService("Players")
@@ -8,7 +8,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local EnemyData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("EnemyData"))
+local PlayerStats = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PlayerStats"))
+local Elements = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Elements"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
+local PlayerResources = require(script.Parent:WaitForChild("PlayerResources"))
+local Ailments = require(script.Parent:WaitForChild("Ailments"))
+local DungeonRun = require(script.Parent:WaitForChild("DungeonRun"))
+local TabletData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TabletData"))
 local Loot = require(script.Parent:WaitForChild("Loot"))
 
 local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CombatRemote") :: RemoteEvent
@@ -22,6 +28,9 @@ local MELEE_REACH_BONUS = 1.5 -- A melee hit still lands if the target is this m
 local BOSS_CLEAR_COLOR = Color3.fromRGB(255, 215, 70)
 local HEALTH_PER_EXTRA_PLAYER = 0.5 -- Each player after the first adds +50% max health to every enemy
 local DROPS_FOLDER_NAME = "Drops" -- Loot's folder of items on the ground
+local ALERT_TIME = 0.6 -- Seconds an enemy stands still (with a "!" over its head) after spotting a player
+local EYE_HEIGHT = 1.9 -- Studs above the root center at Scale 1; players must be visible from here to be spotted
+local PORTAL_STREAM_TIMEOUT = 3 -- Max seconds the dungeon portal waits for the entrance area to load on the client
 
 -- Pathfinding: enemies walk straight at their goal unless the map blocks the way, then follow a detour
 local PATH_AGENT_RADIUS = 2 -- Studs at Scale 1 (the body is ~4 studs arm to arm)
@@ -62,6 +71,8 @@ type EnemyState = {
 	Attacking: boolean, -- In an attack windup
 	Dead: boolean,
 	NextAttackTime: number,
+	AlertUntil: number, -- Just spotted its target: stands still until this time
+	Element: string, -- Its attack's element (EnemyData, or forced by the run's Stone Tablet mods)
 	Contributors: { [Player]: boolean }, -- Everyone who hit it gets the EXP
 	Path: Path, -- PathfindingService path sized for this enemy's body
 	Waypoints: { PathWaypoint }?, -- Current detour around obstacles (nil = walking straight)
@@ -74,6 +85,7 @@ type EnemyState = {
 local EnemyService = {}
 
 local enemies: { [Model]: EnemyState } = {}
+local spawnPointsCache: { SpawnPoint } = {}
 local random = Random.new()
 local healthMultiplier = 1 -- From the player count, see rescaleEnemyHealth
 
@@ -249,12 +261,14 @@ local function buildModel(typeId: string, data: EnemyData.EnemyType): (Model, Hu
 	outline.DepthMode = Enum.HighlightDepthMode.Occluded
 	outline.Parent = model
 
+	-- Stone Tablet run (DungeonRun): tougher and faster monsters
+	local run = DungeonRun.getCurrent()
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RigType = Enum.HumanoidRigType.R15
 	humanoid.HipHeight = HIP_HEIGHT * scale
-	humanoid.MaxHealth = data.MaxHealth * healthMultiplier
+	humanoid.MaxHealth = data.MaxHealth * healthMultiplier * run.Health
 	humanoid.Health = humanoid.MaxHealth
-	humanoid.WalkSpeed = data.WalkSpeed
+	humanoid.WalkSpeed = data.WalkSpeed * run.Speed
 	humanoid.BreakJointsOnDeath = false
 	humanoid.RequiresNeck = false
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
@@ -286,6 +300,8 @@ local function spawnEnemy(point: SpawnPoint)
 		root:SetNetworkOwner(nil)
 	end)
 
+	local runElements = DungeonRun.getCurrent().Elements
+
 	local state: EnemyState = {
 		Data = data,
 		Model = model,
@@ -297,6 +313,9 @@ local function spawnEnemy(point: SpawnPoint)
 		Attacking = false,
 		Dead = false,
 		NextAttackTime = 0,
+		AlertUntil = 0,
+		-- Tablet mods like "Monster attacks deal Cold damage" override the enemy's own element (two mods: random)
+		Element = if #runElements > 0 then runElements[random:NextInteger(1, #runElements)] else data.Attack.Element,
 		Contributors = {},
 		Path = PathfindingService:CreatePath({
 			AgentRadius = PATH_AGENT_RADIUS * data.Scale,
@@ -316,7 +335,7 @@ local function spawnEnemy(point: SpawnPoint)
 	end)
 end
 
-function onDeath(state: EnemyState, point: SpawnPoint)
+function onDeath(state: EnemyState, _point: SpawnPoint)
 	if state.Dead then
 		return
 	end
@@ -324,20 +343,22 @@ function onDeath(state: EnemyState, point: SpawnPoint)
 	local data = state.Data
 	local model = state.Model
 
-	-- EXP goes to everyone who hit it (co-op: nobody loses out on the last hit)
+	-- EXP and flask charges go to everyone who hit it (co-op: nobody loses out on the last hit)
+	local flaskCharge = if data.IsBoss then PlayerStats.FLASK_CHARGE_PER_BOSS_KILL else PlayerStats.FLASK_CHARGE_PER_KILL
 	for player in pairs(state.Contributors) do
 		if player.Parent then
 			PlayerData.addExp(player, data.Exp)
+			PlayerResources.addFlaskCharges(player, flaskCharge)
 		end
 	end
 
-	Loot.rollDrops(data.Drops, findGround(state.Root.Position))
+	Loot.rollDrops(data.Drops, findGround(state.Root.Position), DungeonRun.getCurrent(), data.IsBoss)
 
 	if data.IsBoss then
-		PlayerData.notify(nil, ("เคลียร์ด่าน! ปราบ %s สำเร็จ"):format(data.DisplayName), BOSS_CLEAR_COLOR)
+		PlayerData.notify(nil, ("Dungeon Cleared! Defeated %s (Use portal to return to Lobby)"):format(data.DisplayName), BOSS_CLEAR_COLOR)
 	end
 
-	-- Fade the body out, then remove it
+	-- Fade the body out, then remove it (no auto-respawn; enemies respawn only when resetting the dungeon)
 	local outline = model:FindFirstChildOfClass("Highlight")
 	if outline then
 		outline:Destroy()
@@ -351,22 +372,57 @@ function onDeath(state: EnemyState, point: SpawnPoint)
 		enemies[model] = nil
 		model:Destroy()
 	end)
-
-	task.delay(data.RespawnTime, function()
-		spawnEnemy(point)
-	end)
 end
 
 -- ==========================================
 -- 4. ATTACKS (windup first, so players can see it coming and dodge)
 -- ==========================================
-local function damagePlayer(character: Model, amount: number)
+-- Players: energy shield takes the damage first (PlayerResources). element colors the damage number (nil = physical)
+local function hurtCharacter(character: Model, humanoid: Humanoid, amount: number, element: string?)
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		PlayerResources.takeDamage(player, humanoid, amount)
+	else
+		humanoid:TakeDamage(amount)
+	end
+	combatRemote:FireAllClients("DamageDealt", character, amount, false, element)
+end
+
+local function damagePlayer(character: Model, amount: number, element: string)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if not humanoid or humanoid.Health <= 0 or character:FindFirstChildOfClass("ForceField") then
 		return -- Dead, or spawn protection
 	end
-	humanoid:TakeDamage(amount)
-	combatRemote:FireAllClients("DamageDealt", character, amount, false)
+	if (character:GetAttribute("InvulnerableUntil") or 0) > os.clock() then
+		return -- Mid dodge roll (CombatServer sets this)
+	end
+
+	-- Elemental hits are reduced by the player's resistance (up to Elements.MAX_RESISTANCE)
+	local isElemental = element ~= "Physical"
+	local player = Players:GetPlayerFromCharacter(character)
+	if player and isElemental then
+		local resistance = (PlayerData.getStats(player) :: any)[element .. "Resistance"] or 0
+		amount *= 1 - math.min(resistance, Elements.MAX_RESISTANCE) / 100
+	end
+	-- Shocked players take more damage
+	hurtCharacter(character, humanoid, math.round(amount * Ailments.getDamageTakenMultiplier(character)), if isElemental then element else nil)
+
+	-- ...and inflict their ailment on the player (burning, chilled / frozen, shocked)
+	if isElemental then
+		Ailments.applyHit(character, humanoid, { [element] = amount }, function(burn: number)
+			hurtCharacter(character, humanoid, burn, "Fire")
+		end)
+	end
+end
+
+-- Stops walking and turns to look at a point (flat)
+local function stopAndFace(state: EnemyState, position: Vector3)
+	local root = state.Root
+	state.Humanoid:MoveTo(root.Position)
+	local lookTarget = Vector3.new(position.X, root.Position.Y, position.Z)
+	if (lookTarget - root.Position).Magnitude > 0.1 then
+		root.CFrame = CFrame.lookAt(root.Position, lookTarget)
+	end
 end
 
 local function startAttack(state: EnemyState, target: Model, targetRoot: BasePart)
@@ -376,11 +432,7 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 	state.NextAttackTime = os.clock() + attack.Windup + attack.Cooldown
 
 	-- Stop and face the target during the windup
-	state.Humanoid:MoveTo(root.Position)
-	local lookTarget = Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z)
-	if (lookTarget - root.Position).Magnitude > 0.1 then
-		root.CFrame = CFrame.lookAt(root.Position, lookTarget)
-	end
+	stopAndFace(state, targetRoot.Position)
 
 	-- Slam hits a circle around the enemy, Melee hits the target if it's still in reach
 	local ground = root.Position - Vector3.new(0, state.Humanoid.HipHeight + root.Size.Y / 2, 0)
@@ -390,23 +442,25 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 
 	task.delay(attack.Windup, function()
 		state.Attacking = false
-		if state.Dead then
+		-- Died, or got frozen during the windup: the attack is cancelled
+		if state.Dead or Ailments.isFrozen(state.Model) then
 			return
 		end
 
-		local damage = random:NextInteger(attack.MinDamage, attack.MaxDamage)
+		-- Stone Tablet run: monsters hit harder
+		local damage = math.round(random:NextInteger(attack.MinDamage, attack.MaxDamage) * DungeonRun.getCurrent().Damage)
 		if attack.Kind == "Slam" then
 			for _, player in ipairs(Players:GetPlayers()) do
 				local character = player.Character
 				local playerRoot = getAliveRoot(character)
 				if character and playerRoot and flatDistance(playerRoot.Position, ground) <= radius then
-					damagePlayer(character, damage)
+					damagePlayer(character, damage, state.Element)
 				end
 			end
 		else
 			local currentRoot = getAliveRoot(target)
 			if currentRoot and flatDistance(currentRoot.Position, root.Position) <= attack.Range + MELEE_REACH_BONUS then
-				damagePlayer(target, damage)
+				damagePlayer(target, damage, state.Element)
 			end
 		end
 	end)
@@ -415,7 +469,13 @@ end
 -- ==========================================
 -- 5. AI (chase nearest player in range, attack, walk home when pulled too far)
 -- ==========================================
-local function findTarget(state: EnemyState): Model?
+-- Players behind walls go unnoticed, so enemies don't come around a corner already mid-charge
+local function canSee(state: EnemyState, targetRoot: BasePart, mapParams: RaycastParams): boolean
+	local eye = state.Root.Position + Vector3.new(0, EYE_HEIGHT * state.Data.Scale, 0)
+	return workspace:Raycast(eye, targetRoot.Position - eye, mapParams) == nil
+end
+
+local function findTarget(state: EnemyState, mapParams: RaycastParams): Model?
 	local best: Model? = nil
 	local bestDistance = state.Data.AggroRange
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -423,7 +483,7 @@ local function findTarget(state: EnemyState): Model?
 		local root = getAliveRoot(character)
 		if character and root then
 			local distance = flatDistance(root.Position, state.Root.Position)
-			if distance < bestDistance then
+			if distance < bestDistance and canSee(state, root, mapParams) then
 				best = character
 				bestDistance = distance
 			end
@@ -497,11 +557,14 @@ local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastPar
 	if state.Dead or state.Attacking then
 		return
 	end
+	if Ailments.isFrozen(state.Model) then
+		return -- Frozen: can't move (Ailments set its speed to 0) or start an attack until it thaws
+	end
 	local data = state.Data
 	local humanoid = state.Humanoid
 	local root = state.Root
 
-	-- Fell off the map / root got destroyed: count it as dead so it respawns
+	-- Fell off the map / root got destroyed: count it as dead
 	if not root:IsDescendantOf(workspace) then
 		humanoid.Health = 0
 		return
@@ -529,8 +592,15 @@ local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastPar
 	end
 
 	if not targetRoot then
-		state.Target = findTarget(state)
+		state.Target = findTarget(state, mapParams)
 		targetRoot = getAliveRoot(state.Target)
+		if targetRoot then
+			-- Just spotted: freeze for a moment with a "!" so the player sees it coming before the charge
+			state.AlertUntil = now + ALERT_TIME
+			stopAndFace(state, targetRoot.Position)
+			combatRemote:FireAllClients("EnemyAlert", state.Model, ALERT_TIME)
+			return
+		end
 	end
 
 	local target = state.Target
@@ -539,6 +609,10 @@ local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastPar
 			moveToward(state, state.Home, now, mapParams)
 		end
 		return
+	end
+
+	if now < state.AlertUntil then
+		return -- Still reacting to spotting the target
 	end
 
 	if flatDistance(targetRoot.Position, root.Position) <= data.Attack.Range then
@@ -555,18 +629,156 @@ end
 -- Co-op scaling: players joined/left, so resize every living enemy's max health and keep its health %
 local function rescaleEnemyHealth(playerCount: number)
 	healthMultiplier = 1 + HEALTH_PER_EXTRA_PLAYER * math.max(playerCount - 1, 0)
+	local runHealth = DungeonRun.getCurrent().Health -- Stone Tablet run bonus stays on top
 	for _, state in pairs(enemies) do
 		local humanoid = state.Humanoid
 		if not state.Dead and humanoid.Health > 0 then
 			local fraction = humanoid.Health / humanoid.MaxHealth
-			humanoid.MaxHealth = state.Data.MaxHealth * healthMultiplier
+			humanoid.MaxHealth = state.Data.MaxHealth * healthMultiplier * runHealth
 			humanoid.Health = humanoid.MaxHealth * fraction
 		end
 	end
 end
 
 -- ==========================================
--- 6. PUBLIC API
+-- 6. DUNGEON RESET & PORTALS
+-- ==========================================
+-- A new run: uses up the Stone Tablet waiting in the portal (if any) and respawns every enemy with its modifiers
+function EnemyService.resetDungeon(): TabletData.Effects
+	local run = DungeonRun.startRun()
+
+	-- Remove all managed enemies currently alive or fading out
+	for model, state in pairs(enemies) do
+		state.Dead = true
+		enemies[model] = nil
+		if model and model.Parent then
+			model:Destroy()
+		end
+	end
+
+	if #spawnPointsCache == 0 then
+		spawnPointsCache = collectSpawnPoints()
+	end
+	for _, point in ipairs(spawnPointsCache) do
+		spawnEnemy(point)
+	end
+	return run
+end
+
+local function setupDungeonPortals()
+	local dungeonMap = workspace:FindFirstChild("DungeonMap")
+	if not dungeonMap then
+		return
+	end
+
+	local entrancePad = dungeonMap:FindFirstChild("DungeonEntranceSpawn") :: BasePart?
+	local lobbySpawn = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+
+	local enterPortal = dungeonMap:FindFirstChild("LobbyDungeonPortal")
+	if enterPortal then
+		local label = enterPortal:FindFirstChildWhichIsA("TextLabel", true)
+		if label then
+			-- The sign shows the Stone Tablet waiting in the portal (placed from the inventory)
+			local function updateSign()
+				local tablet = DungeonRun.getPending()
+				label.Text = if tablet
+					then string.format("Dungeon Portal\nStone Tablet Tier %d ready", tablet.Tier or 1)
+					else "Dungeon Portal\n(Reset Monsters)"
+			end
+			updateSign()
+			DungeonRun.Changed:Connect(updateSign)
+		end
+	end
+	local enterPrompt = enterPortal and enterPortal:FindFirstChild("PortalPrompt", true) :: ProximityPrompt?
+	if enterPrompt then
+		enterPrompt.ObjectText = "Stage 1: Stone Valley"
+		enterPrompt.ActionText = "Enter Dungeon"
+		enterPrompt.Triggered:Connect(function(player: Player)
+			local character = player.Character
+			local root = getAliveRoot(character)
+			if not character or not root then
+				return
+			end
+
+			local run = EnemyService.resetDungeon()
+			if run.Tier > 0 then
+				PlayerData.notify(nil, ("%s started a Stone Tablet run. %s"):format(player.DisplayName, TabletData.describe(run)), BOSS_CLEAR_COLOR)
+			end
+			local targetPos = if entrancePad then entrancePad.Position + Vector3.new(0, 4, 0) else Vector3.new(250, 4, 0)
+			-- With StreamingEnabled, load the entrance area (and its enemies) on the client before arriving,
+			-- otherwise enemies near the entrance pop into view already charging
+			pcall(function()
+				player:RequestStreamAroundAsync(targetPos, PORTAL_STREAM_TIMEOUT)
+			end)
+			if getAliveRoot(character) == nil or player.Character ~= character then
+				return -- Died or respawned while the area was loading
+			end
+			character:PivotTo(CFrame.lookAt(targetPos, targetPos + Vector3.new(0, 0, -10)))
+
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+			PlayerResources.restoreAll(player) -- Full mana, energy shield and flasks too
+			PlayerData.notify(player, "Entered Dungeon! All monsters have been reset", Color3.fromRGB(110, 215, 255))
+		end)
+	end
+
+	local returnPortal = dungeonMap:FindFirstChild("DungeonReturnPortal")
+	if returnPortal then
+		local label = returnPortal:FindFirstChildWhichIsA("TextLabel", true)
+		if label then
+			label.Text = "Return to Lobby"
+		end
+	end
+	local returnPrompt = returnPortal and returnPortal:FindFirstChild("PortalPrompt", true) :: ProximityPrompt?
+	if returnPrompt then
+		returnPrompt.ObjectText = "Safe Zone"
+		returnPrompt.ActionText = "Return to Lobby"
+		returnPrompt.Triggered:Connect(function(player: Player)
+			local character = player.Character
+			local root = getAliveRoot(character)
+			if not character or not root then
+				return
+			end
+
+			local targetPos = if lobbySpawn then lobbySpawn.Position + Vector3.new(0, 4, 0) else Vector3.new(-40, 4, 32)
+			character:PivotTo(CFrame.new(targetPos))
+
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+			PlayerResources.restoreAll(player) -- Full mana, energy shield and flasks too
+			PlayerData.notify(player, "Returned to Safe Zone (Lobby)", Color3.fromRGB(140, 240, 160))
+		end)
+	end
+
+	-- Listen for remote teleport requests (from Settings UI button)
+	local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+	local teleportRemote = remotesFolder:WaitForChild("TeleportRemote") :: RemoteEvent
+	teleportRemote.OnServerEvent:Connect(function(player: Player, destination: string)
+		local character = player.Character
+		local root = getAliveRoot(character)
+		if not character or not root then
+			return
+		end
+
+		if destination == "Lobby" then
+			local targetPos = if lobbySpawn then lobbySpawn.Position + Vector3.new(0, 4, 0) else Vector3.new(-40, 4, 32)
+			character:PivotTo(CFrame.new(targetPos))
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+			PlayerResources.restoreAll(player) -- Full mana, energy shield and flasks too
+			PlayerData.notify(player, "Returned to Safe Zone (Lobby)", Color3.fromRGB(140, 240, 160))
+		end
+	end)
+end
+
+-- ==========================================
+-- 7. PUBLIC API
 -- ==========================================
 -- Called by CombatServer. Returns false if the model isn't an enemy managed here (e.g. TrainingDummy)
 function EnemyService.applyDamage(model: Model, amount: number, attacker: Player): boolean
@@ -596,9 +808,12 @@ function EnemyService.start()
 		rescaleEnemyHealth(countPlayers(leaving)) -- The leaving player is still in GetPlayers() here
 	end)
 
-	for _, point in ipairs(collectSpawnPoints()) do
+	spawnPointsCache = collectSpawnPoints()
+	for _, point in ipairs(spawnPointsCache) do
 		spawnEnemy(point)
 	end
+
+	setupDungeonPortals()
 
 	task.spawn(function()
 		while true do

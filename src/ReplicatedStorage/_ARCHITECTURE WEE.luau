@@ -1,20 +1,24 @@
 --[[
 ================================================================================
-   PROJECT POE - GAME ARCHITECTURE REFERENCE
-   (เอกสารฉบับเต็มพร้อมแผนผังอยู่ที่ไฟล์ d:\roblox poe\ARCHITECTURE.md)
+   PROJECT POE - GAME ARCHITECTURE REFERENCE [โน้ตของ WEE / Weerapap3006]
+   (เอกสารฉบับเต็มพร้อมแผนผังอยู่ที่ไฟล์ d:\roblox_poe\ARCHITECTURE.md)
 ================================================================================
 
 1. โครงสร้างโฟลเดอร์หลัก (EXPLORER STRUCTURE):
    - Workspace
-     └── Enemies
-         └── TrainingDummy (Model) : หุ่นซ้อมมือ R15 (HP 500, รีเลือดอัตโนมัติเมื่อตาย)
+     ├── Enemies
+     │   └── TrainingDummy (Model) : หุ่นซ้อมมือ R15 (HP 500, รีเลือดอัตโนมัติเมื่อตาย)
+     ├── DungeonMap (Folder) : โซน Lobby + ประตูวาร์ปเข้าด่าน/กลับเมือง + โครงสร้างด่าน
+     └── EnemySpawns (Folder) : จุดเกิดมอนสเตอร์ในด่าน (Grunt 10 + 10 ตัว, Brute 1 ตัว)
 
    - ReplicatedStorage (โซนกลาง: เห็นทั้ง Client และ Server)
-     ├── _ARCHITECTURE (ModuleScript) : ไฟล์โน้ตสรุปโครงสร้างเกมไฟล์นี้
+     ├── _ARCHITECTURE WEE (ModuleScript) : ไฟล์โน้ตสรุปโครงสร้างและ CHANGELOG ของ WEE
      ├── Remotes
-     │   └── CombatRemote (RemoteEvent) : ท่อส่งข้อมูลการโจมตีและผลลัพธ์ดาเมจ
+     │   ├── CombatRemote (RemoteEvent) : ท่อส่งข้อมูลการโจมตีและผลลัพธ์ดาเมจ
+     │   └── TeleportRemote (RemoteEvent) : ท่อส่งคำขอวาร์ปกลับ Lobby จากหน้าต่างตั้งค่า
      └── Modules
-         └── SkillData (ModuleScript) : ตารางเก็บค่า Cooldown, Damage, Crit, HitboxSize
+         ├── SkillData (ModuleScript) : ตารางเก็บค่า Cooldown, Damage, Crit, HitboxSize
+         └── ItemData (ModuleScript) : ข้อมูลไอเทมและช่องสวมใส่อุปกรณ์ 9 ช่อง
 
    - ServerScriptService (โซน Server: ปลอดภัย 100% กันโปรโกง)
      └── CombatServer (Script) : ตรวจ Cooldown จริง, สร้าง Hitbox, คำนวณดาเมจ, ลดเลือดศัตรู
@@ -23,15 +27,58 @@
      ├── StarterCharacter (Model) : หุ่นพื้นฐาน R15 Anime Base + CelShadeOutline (Highlight)
      └── StarterPlayerScripts
          ├── CameraScript (LocalScript) : ล็อกกล้อง 2.5D Isometric + ซูมเข้าออกสมูท
-         └── CombatClient (LocalScript) : หันหน้าตามเมาส์, รับคลิกซ้าย, เล่น VFX, เลขดาเมจเด้ง
+         ├── CombatClient (LocalScript) : หันหน้าตามเมาส์, รับคลิกซ้าย, เล่น VFX, เลขดาเมจเด้ง
+         ├── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด B) + ช่องสวมใส่อุปกรณ์ 9 ช่อง
+         └── MinimapClient (LocalScript) : มินิแมพมุมขวาบน + กด M ขยายกลางจอ + ปุ่มตั้งค่า ⚙️ (กด P)
 
 --------------------------------------------------------------------------------
 2. อยากแก้ค่าอะไร ให้ไปที่ไฟล์ไหน? (QUICK EDIT GUIDE):
    - แก้มุมกล้อง / ความเร็วกล้อง / ระยะซูม  --> StarterPlayerScripts.CameraScript
    - แก้ความแรงสกิล / คูลดาวน์ / ระยะฟัน   --> ReplicatedStorage.Modules.SkillData
    - แก้สีคลื่นดาบ / ขนาดตัวเลขดาเมจเด้ง   --> StarterPlayerScripts.CombatClient
+   - แก้ช่องสวมใส่ / เพิ่มไอเทมใหม่          --> ReplicatedStorage.Modules.ItemData
+   - แก้ขนาดมินิแมพ / สีจุด / หน้าต่างตั้งค่า  --> StarterPlayerScripts.MinimapClient
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox --> ServerScriptService.CombatServer
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน    --> StarterPlayer.StarterCharacter
+
+--------------------------------------------------------------------------------
+3. บันทึกการแก้ไข (CHANGELOG ของ WEE) - ใหม่สุดอยู่บน:
+   [2026-10-30]
+   - All UI & Data Modules (Base English UI + Remove Emoji Icons):
+     + เปลี่ยนข้อความ UI และชื่อข้อมูลในเกมทั้งหมดเป็นภาษาอังกฤษ (Base English) และเอาไอคอนอีโมจิออก:
+       - SkillData & CombatClient: Slash [LMB], Spin Slash [RMB / Q]
+       - ItemData & InventoryClient: Inventory [B], Iron Sword, Leather Vest, Normal/Magic/Rare, Equip/Unequip/Discard
+       - EnemyData & EnemyService: Stone Grunt, Stone Guardian, Dungeon Portal (Reset Monsters), Return to Lobby
+       - HudClient & PlayerData & Loot: YOU DIED, Respawning in Xs, Pick Up, Level Up!, Obtained <Item>
+   - ItemData / PlayerData / InventoryClient:
+     + ขยายระบบช่องสวมใส่อุปกรณ์ (Equipment Slots) ให้รองรับครบ 9 ช่องตามแผน:
+       MainHand, OffHand, Cloth, Helmet, Amulet, Ring1, Ring2, Special1, Special2
+     + รองรับการใส่ไอเทมประเภท Ring ลงช่อง Ring1/Ring2 ที่ว่างอัตโนมัติ และ Special ลงช่อง Special1/Special2 ที่ว่างอัตโนมัติ
+     + รองรับการย้ายข้อมูลเซฟเก่า (Weapon -> MainHand, Armor -> Cloth) ไม่ให้ของเดิมหาย
+     + เพิ่มระบบจำกัดการถืออาวุธ (AllowOffHand ใน ItemData.Bases):
+       - อาวุธที่ตั้ง AllowOffHand = true สามารถใส่อุปกรณ์ช่อง OffHand คู่กันได้
+       - อาวุธที่ตั้ง AllowOffHand = false (ถือเดี่ยว ห้ามถือ OffHand หรือถือคู่) เมื่อสวมใส่จะล็อกช่อง OffHand (ขึ้น [Locked]) และถอด OffHand ที่ใส่อยู่เก็บเข้ากระเป๋าให้อัตโนมัติ
+     + ปรับหน้าต่าง InventoryClient ฝั่งซ้ายให้จัดเรียงช่องสวมใส่เป็นกรอบสี่เหลี่ยมจัตุรัส (56x56) เรียง 3 คอลัมน์แนวตั้ง:
+       คอลัมน์ 1 (Helmet, Cloth, MainHand, OffHand), คอลัมน์ 2 (Amulet, Ring1, Ring2), คอลัมน์ 3 (Special1, Special2) พร้อมแสดงสเตตัสด้านล่าง
+   - MinimapClient / TeleportRemote / EnemyService:
+     + เพิ่มปุ่มตั้งค่า ⚙️ ข้างมินิแมพมุมขวาบน (หรือกดปุ่มลัด P) และปรับข้อความ UI เป็นภาษาอังกฤษ
+     + ออกแบบหน้าต่าง Settings แบบหน้าเมนูหลัก (Main Menu) ที่ต้องกดเลือกหมวดก่อนเข้าไปปรับค่า:
+       1. ปุ่ม "Map Settings >": กดเข้าไปจะเจอหน้าตั้งค่าแผนที่พร้อมปุ่ม "< Back" และหลอดเลื่อน (Sliders) สำหรับลากปรับขนาด Corner Map, Overlay Map [M], ระยะเรดาร์ และความทึบพื้นหลังแบบละเอียด
+       2. ปุ่ม "Other Settings >": หน้าหมวดหมู่สำรองพร้อมปุ่ม "< Back" เตรียมไว้สำหรับใส่ตั้งค่าเพิ่มเติมในอนาคต
+       3. ปุ่ม "Return to Lobby": วาร์ปกลับโซนปลอดภัย (Lobby) ทันทีพร้อมรีเลือดเต็ม (ผ่าน TeleportRemote)
+   - InventoryClient / MinimapClient:
+     + เปลี่ยนปุ่มเปิดกระเป๋าเป็น B (แทน I ที่ชนกับปุ่มซูมกล้อง Roblox) และปุ่มขยายแผนที่เป็น M (แทน Tab ที่ชนกับ Leaderboard)
+     + เช็ก UserInputService:GetFocusedTextBox() == nil เพื่อให้กดปุ่ม B, M, P ติดเสมอโดยไม่โดนระบบ Roblox บล็อก
+   - MinimapClient (src/StarterPlayer/StarterPlayerScripts/MinimapClient.client.luau):
+     + เพิ่มระบบมินิแมพมุมขวาบน และกดปุ่ม M (หรือคลิกที่แมพ) เพื่อสลับขยายเป็นแผนที่โปร่งใสกลางจอแบบ PoE
+     + จุดตัวเราเป็นสีขาวพร้อมเข็มชี้ทิศหน้า, จุดมอนสเตอร์สีแดง, จุดบอสสีส้มทอง, ประตูวาร์ป และแท่งกำแพงด่าน
+     + แสดงตัวนับจำนวนศัตรูที่เหลืออยู่ในด่านมุมขวาล่างของมินิแมพ
+   [2026-10-29]
+   - EnemyService + DungeonMap:
+     + ปรับให้มอนสเตอร์ในด่านตายแล้วตายเลย (ไม่เกิดใหม่เองตามเวลา RespawnTime)
+     + เพิ่มฟังก์ชัน EnemyService.resetDungeon() และระบบประตูวาร์ป (LobbyDungeonPortal / DungeonReturnPortal)
+       เมื่อกดเข้าประตูวาร์ปจาก Lobby จะล้างและเสกมอนสเตอร์ทั้งด่านใหม่ทั้งหมด แล้ววาร์ปไปจุดเริ่มด่าน
+     + สร้างฉาก DungeonMap และ EnemySpawns ใน Workspace (โซน Lobby + ด่านทางยาว: Grunt 10 ตัว -> Grunt 10 ตัว -> บอส Brute 1 ตัว)
 ================================================================================
 ]]
 
