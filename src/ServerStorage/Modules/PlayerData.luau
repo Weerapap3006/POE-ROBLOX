@@ -12,6 +12,11 @@ local ItemData = require(modulesFolder:WaitForChild("ItemData"))
 local PlayerStats = require(modulesFolder:WaitForChild("PlayerStats"))
 local SkillData = require(modulesFolder:WaitForChild("SkillData"))
 local RuneData = require(modulesFolder:WaitForChild("RuneData"))
+local StoneData = require(modulesFolder:WaitForChild("StoneData"))
+local TabletData = require(modulesFolder:WaitForChild("TabletData"))
+
+local Crafting = require(script.Parent:WaitForChild("Crafting"))
+local DungeonRun = require(script.Parent:WaitForChild("DungeonRun"))
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local inventoryRemote = remotesFolder:WaitForChild("InventoryRemote") :: RemoteEvent
@@ -36,6 +41,7 @@ export type Profile = {
 	Inventory: { ItemData.Item },
 	Equipped: { [string]: ItemData.Item },
 	SkillRunes: { [string]: { ItemData.Item } }, -- Stone runes socketed in each skill (in socket order, no gaps)
+	Stones: { [string]: number }, -- Crafting stones owned, per StoneData id
 	Stats: PlayerStats.Stats,
 	-- False when loading failed: saving would overwrite the player's real data with this empty profile
 	CanSave: boolean,
@@ -106,15 +112,30 @@ local function sanitizeItem(raw: any): ItemData.Item?
 	if not ItemData.Bases[raw.Base] or not ItemData.Rarities[raw.Rarity] then
 		return nil
 	end
+	local pool = ItemData.getAffixPool(raw) -- Tablet mods or gear affixes
 	local affixes = {}
 	if type(raw.Affixes) == "table" then
 		for _, affix in ipairs(raw.Affixes) do
-			if type(affix) == "table" and ItemData.Affixes[affix.Id] and type(affix.Value) == "number" then
+			if type(affix) == "table" and pool[affix.Id] and type(affix.Value) == "number" then
 				table.insert(affixes, { Id = affix.Id, Value = affix.Value })
 			end
 		end
 	end
-	return { Id = raw.Id, Base = raw.Base, Rarity = raw.Rarity, Affixes = affixes }
+	local item: ItemData.Item = { Id = raw.Id, Base = raw.Base, Rarity = raw.Rarity, Affixes = affixes }
+	if ItemData.isTablet(item) then
+		item.Tier = if type(raw.Tier) == "number" then math.clamp(math.floor(raw.Tier), 1, TabletData.MAX_TIER) else 1
+	end
+	return item
+end
+
+-- Crafting stone counts: only stones that still exist, whole numbers, never negative
+local function sanitizeStones(raw: any): { [string]: number }
+	local stones = {}
+	for stoneId in pairs(StoneData.Stones) do
+		local count = if type(raw) == "table" then raw[stoneId] else nil
+		stones[stoneId] = if type(count) == "number" then math.clamp(math.floor(count), 0, 9999) else 0
+	end
+	return stones
 end
 
 -- Keeps only runes that still exist, fit the skill, aren't doubled and fit in its sockets
@@ -146,6 +167,7 @@ local function buildProfile(data: any, canSave: boolean): Profile
 		Inventory = {},
 		Equipped = {},
 		SkillRunes = sanitizeSkillRunes(nil),
+		Stones = sanitizeStones(nil),
 		Stats = PlayerStats.compute(1, {}),
 		CanSave = canSave,
 	}
@@ -153,6 +175,7 @@ local function buildProfile(data: any, canSave: boolean): Profile
 		return profile -- New player (or load failed)
 	end
 	profile.SkillRunes = sanitizeSkillRunes(data.SkillRunes)
+	profile.Stones = sanitizeStones(data.Stones)
 
 	if type(data.Level) == "number" then
 		profile.Level = math.clamp(math.floor(data.Level), 1, PlayerStats.MAX_LEVEL)
@@ -208,6 +231,7 @@ local function saveProfile(player: Player, profile: Profile): boolean
 		Inventory = profile.Inventory,
 		Equipped = profile.Equipped,
 		SkillRunes = profile.SkillRunes,
+		Stones = profile.Stones,
 	}
 
 	pendingSaves += 1
@@ -272,6 +296,7 @@ local function sync(player: Player, profile: Profile)
 		Inventory = profile.Inventory,
 		Equipped = profile.Equipped,
 		SkillRunes = profile.SkillRunes,
+		Stones = profile.Stones,
 		Capacity = INVENTORY_CAPACITY,
 	})
 
@@ -307,6 +332,9 @@ local function equip(player: Player, profile: Profile, itemId: string)
 	local base = ItemData.Bases[item.Base]
 	if base.Slot == "Rune" then
 		PlayerData.notify(player, "Runes go into skill sockets (bottom of the inventory)", WARNING_COLOR)
+		return
+	elseif base.Slot == "Tablet" then
+		PlayerData.notify(player, "Stone Tablets go into the dungeon portal (Place in Portal)", WARNING_COLOR)
 		return
 	end
 	local slot = ItemData.getTargetSlot(base.Slot, profile.Equipped)
@@ -436,6 +464,56 @@ local function unsocketRune(player: Player, profile: Profile, skillId: string, s
 	table.insert(profile.Inventory, item)
 end
 
+-- Uses one crafting stone on an item in the bag or equipped (equipped gear changes the player's stats right away)
+local function craft(player: Player, profile: Profile, stoneId: string, itemId: string)
+	local stone = StoneData.Stones[stoneId]
+	if not stone then
+		return
+	end
+	local index = findInInventory(profile, itemId)
+	local item = if index then profile.Inventory[index] else nil
+	if not item then
+		for _, equippedItem in pairs(profile.Equipped) do
+			if equippedItem.Id == itemId then
+				item = equippedItem
+			end
+		end
+	end
+	if not item then
+		return
+	end
+	if (profile.Stones[stoneId] or 0) < 1 then
+		PlayerData.notify(player, "You have no " .. stone.Name, WARNING_COLOR)
+		return
+	end
+
+	local reason = Crafting.useStone(stoneId, item)
+	if reason then
+		PlayerData.notify(player, reason, WARNING_COLOR)
+		return
+	end
+	profile.Stones[stoneId] -= 1
+	local rarity = ItemData.Rarities[item.Rarity]
+	PlayerData.notify(player, ("%s used on %s"):format(stone.Name, ItemData.getName(item)), rarity and rarity.Color)
+end
+
+-- Puts a Stone Tablet from the bag into the Lobby portal: the next dungeon run (for everyone) uses it
+local function placeTablet(player: Player, profile: Profile, itemId: string)
+	local index = findInInventory(profile, itemId)
+	local item = if index then profile.Inventory[index] else nil
+	if not index or not item or not ItemData.isTablet(item) then
+		return
+	end
+	local reason = DungeonRun.placeTablet(item)
+	if reason then
+		PlayerData.notify(player, reason, WARNING_COLOR)
+		return
+	end
+	table.remove(profile.Inventory, index)
+	local effects = TabletData.getEffects(item :: any)
+	PlayerData.notify(nil, ("%s placed a Stone Tablet in the portal (%s)"):format(player.DisplayName, TabletData.describe(effects)), INFO_COLOR)
+end
+
 local function onInventoryRequest(player: Player, action: any, arg: any, arg2: any)
 	local profile = profiles[player]
 	if not profile then
@@ -452,6 +530,10 @@ local function onInventoryRequest(player: Player, action: any, arg: any, arg2: a
 		socketRune(player, profile, arg, arg2)
 	elseif action == "Unsocket" and type(arg) == "string" and type(arg2) == "number" then
 		unsocketRune(player, profile, arg, arg2)
+	elseif action == "Craft" and type(arg) == "string" and type(arg2) == "string" then
+		craft(player, profile, arg, arg2)
+	elseif action == "PlaceTablet" and type(arg) == "string" then
+		placeTablet(player, profile, arg)
 	elseif action ~= "RequestSync" then
 		return
 	end
@@ -513,6 +595,19 @@ function PlayerData.addExp(player: Player, amount: number)
 	if leveledUp then
 		PlayerData.notify(player, ("Level Up! Lv %d"):format(profile.Level), LEVEL_UP_COLOR)
 	end
+end
+
+-- Crafting stones are a count, not inventory items, so picking one up always works
+function PlayerData.addStone(player: Player, stoneId: string, amount: number): boolean
+	local profile = profiles[player]
+	local stone = StoneData.Stones[stoneId]
+	if not profile or not stone then
+		return false
+	end
+	profile.Stones[stoneId] = (profile.Stones[stoneId] or 0) + amount
+	sync(player, profile)
+	PlayerData.notify(player, "Obtained " .. stone.Name, StoneData.COLOR)
+	return true
 end
 
 -- Returns false (and tells the player) when the inventory is full

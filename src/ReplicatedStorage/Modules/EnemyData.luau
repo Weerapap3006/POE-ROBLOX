@@ -30,7 +30,10 @@ export type EnemyType = {
 		Rolls: number, -- How many times to roll for an item
 		Chance: number, -- Chance per roll to drop an item (0-1)
 		RarityWeights: { [string]: number }, -- Weight per rarity in ItemData.Rarities
-		RuneChance: number, -- Chance (0-1) to also drop one random stone rune (RuneData)
+		-- Expected counts (0.1 = 10% for one, 2 = two). A Stone Tablet run adds its loot bonus on top (TabletData)
+		RuneChance: number, -- Random stone rune (RuneData)
+		StoneChance: number, -- Random crafting stone (StoneData)
+		TabletChance: number, -- Stone Tablet (Tier 1 from a plain run, the run's tier from a tablet run)
 	},
 }
 
@@ -61,6 +64,8 @@ local EnemyData: { [string]: EnemyType } = {
 			Chance = 0.4,
 			RarityWeights = { Normal = 60, Magic = 32, Rare = 8 },
 			RuneChance = 0.1,
+			StoneChance = 0.15,
+			TabletChance = 0.02,
 		},
 	},
 	Brute = {
@@ -89,7 +94,9 @@ local EnemyData: { [string]: EnemyType } = {
 			Rolls = 3,
 			Chance = 1,
 			RarityWeights = { Magic = 50, Rare = 50 },
-			RuneChance = 1, -- The boss always drops a rune
+			RuneChance = 1, -- The boss always drops a rune,
+			StoneChance = 2, -- two crafting stones
+			TabletChance = 1, -- and a Stone Tablet
 		},
 	},
 }

@@ -13,6 +13,8 @@ local Elements = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild(
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
 local PlayerResources = require(script.Parent:WaitForChild("PlayerResources"))
 local Ailments = require(script.Parent:WaitForChild("Ailments"))
+local DungeonRun = require(script.Parent:WaitForChild("DungeonRun"))
+local TabletData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TabletData"))
 local Loot = require(script.Parent:WaitForChild("Loot"))
 
 local combatRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CombatRemote") :: RemoteEvent
@@ -70,6 +72,7 @@ type EnemyState = {
 	Dead: boolean,
 	NextAttackTime: number,
 	AlertUntil: number, -- Just spotted its target: stands still until this time
+	Element: string, -- Its attack's element (EnemyData, or forced by the run's Stone Tablet mods)
 	Contributors: { [Player]: boolean }, -- Everyone who hit it gets the EXP
 	Path: Path, -- PathfindingService path sized for this enemy's body
 	Waypoints: { PathWaypoint }?, -- Current detour around obstacles (nil = walking straight)
@@ -258,12 +261,14 @@ local function buildModel(typeId: string, data: EnemyData.EnemyType): (Model, Hu
 	outline.DepthMode = Enum.HighlightDepthMode.Occluded
 	outline.Parent = model
 
+	-- Stone Tablet run (DungeonRun): tougher and faster monsters
+	local run = DungeonRun.getCurrent()
 	local humanoid = Instance.new("Humanoid")
 	humanoid.RigType = Enum.HumanoidRigType.R15
 	humanoid.HipHeight = HIP_HEIGHT * scale
-	humanoid.MaxHealth = data.MaxHealth * healthMultiplier
+	humanoid.MaxHealth = data.MaxHealth * healthMultiplier * run.Health
 	humanoid.Health = humanoid.MaxHealth
-	humanoid.WalkSpeed = data.WalkSpeed
+	humanoid.WalkSpeed = data.WalkSpeed * run.Speed
 	humanoid.BreakJointsOnDeath = false
 	humanoid.RequiresNeck = false
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
@@ -295,6 +300,8 @@ local function spawnEnemy(point: SpawnPoint)
 		root:SetNetworkOwner(nil)
 	end)
 
+	local runElements = DungeonRun.getCurrent().Elements
+
 	local state: EnemyState = {
 		Data = data,
 		Model = model,
@@ -307,6 +314,8 @@ local function spawnEnemy(point: SpawnPoint)
 		Dead = false,
 		NextAttackTime = 0,
 		AlertUntil = 0,
+		-- Tablet mods like "Monster attacks deal Cold damage" override the enemy's own element (two mods: random)
+		Element = if #runElements > 0 then runElements[random:NextInteger(1, #runElements)] else data.Attack.Element,
 		Contributors = {},
 		Path = PathfindingService:CreatePath({
 			AgentRadius = PATH_AGENT_RADIUS * data.Scale,
@@ -343,7 +352,7 @@ function onDeath(state: EnemyState, _point: SpawnPoint)
 		end
 	end
 
-	Loot.rollDrops(data.Drops, findGround(state.Root.Position))
+	Loot.rollDrops(data.Drops, findGround(state.Root.Position), DungeonRun.getCurrent(), data.IsBoss)
 
 	if data.IsBoss then
 		PlayerData.notify(nil, ("Dungeon Cleared! Defeated %s (Use portal to return to Lobby)"):format(data.DisplayName), BOSS_CLEAR_COLOR)
@@ -438,19 +447,20 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 			return
 		end
 
-		local damage = random:NextInteger(attack.MinDamage, attack.MaxDamage)
+		-- Stone Tablet run: monsters hit harder
+		local damage = math.round(random:NextInteger(attack.MinDamage, attack.MaxDamage) * DungeonRun.getCurrent().Damage)
 		if attack.Kind == "Slam" then
 			for _, player in ipairs(Players:GetPlayers()) do
 				local character = player.Character
 				local playerRoot = getAliveRoot(character)
 				if character and playerRoot and flatDistance(playerRoot.Position, ground) <= radius then
-					damagePlayer(character, damage, attack.Element)
+					damagePlayer(character, damage, state.Element)
 				end
 			end
 		else
 			local currentRoot = getAliveRoot(target)
 			if currentRoot and flatDistance(currentRoot.Position, root.Position) <= attack.Range + MELEE_REACH_BONUS then
-				damagePlayer(target, damage, attack.Element)
+				damagePlayer(target, damage, state.Element)
 			end
 		end
 	end)
@@ -619,11 +629,12 @@ end
 -- Co-op scaling: players joined/left, so resize every living enemy's max health and keep its health %
 local function rescaleEnemyHealth(playerCount: number)
 	healthMultiplier = 1 + HEALTH_PER_EXTRA_PLAYER * math.max(playerCount - 1, 0)
+	local runHealth = DungeonRun.getCurrent().Health -- Stone Tablet run bonus stays on top
 	for _, state in pairs(enemies) do
 		local humanoid = state.Humanoid
 		if not state.Dead and humanoid.Health > 0 then
 			local fraction = humanoid.Health / humanoid.MaxHealth
-			humanoid.MaxHealth = state.Data.MaxHealth * healthMultiplier
+			humanoid.MaxHealth = state.Data.MaxHealth * healthMultiplier * runHealth
 			humanoid.Health = humanoid.MaxHealth * fraction
 		end
 	end
@@ -632,7 +643,10 @@ end
 -- ==========================================
 -- 6. DUNGEON RESET & PORTALS
 -- ==========================================
-function EnemyService.resetDungeon()
+-- A new run: uses up the Stone Tablet waiting in the portal (if any) and respawns every enemy with its modifiers
+function EnemyService.resetDungeon(): TabletData.Effects
+	local run = DungeonRun.startRun()
+
 	-- Remove all managed enemies currently alive or fading out
 	for model, state in pairs(enemies) do
 		state.Dead = true
@@ -648,6 +662,7 @@ function EnemyService.resetDungeon()
 	for _, point in ipairs(spawnPointsCache) do
 		spawnEnemy(point)
 	end
+	return run
 end
 
 local function setupDungeonPortals()
@@ -663,7 +678,15 @@ local function setupDungeonPortals()
 	if enterPortal then
 		local label = enterPortal:FindFirstChildWhichIsA("TextLabel", true)
 		if label then
-			label.Text = "Dungeon Portal\n(Reset Monsters)"
+			-- The sign shows the Stone Tablet waiting in the portal (placed from the inventory)
+			local function updateSign()
+				local tablet = DungeonRun.getPending()
+				label.Text = if tablet
+					then string.format("Dungeon Portal\nStone Tablet Tier %d ready", tablet.Tier or 1)
+					else "Dungeon Portal\n(Reset Monsters)"
+			end
+			updateSign()
+			DungeonRun.Changed:Connect(updateSign)
 		end
 	end
 	local enterPrompt = enterPortal and enterPortal:FindFirstChild("PortalPrompt", true) :: ProximityPrompt?
@@ -677,7 +700,10 @@ local function setupDungeonPortals()
 				return
 			end
 
-			EnemyService.resetDungeon()
+			local run = EnemyService.resetDungeon()
+			if run.Tier > 0 then
+				PlayerData.notify(nil, ("%s started a Stone Tablet run. %s"):format(player.DisplayName, TabletData.describe(run)), BOSS_CLEAR_COLOR)
+			end
 			local targetPos = if entrancePad then entrancePad.Position + Vector3.new(0, 4, 0) else Vector3.new(250, 4, 0)
 			-- With StreamingEnabled, load the entrance area (and its enemies) on the client before arriving,
 			-- otherwise enemies near the entrance pop into view already charging

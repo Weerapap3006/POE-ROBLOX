@@ -5,7 +5,10 @@
 -- An item is plain data so it can be saved to the DataStore and sent through RemoteEvents:
 -- { Id = "GUID", Base = "IronSword", Rarity = "Magic", Affixes = { { Id = "FlatDamage", Value = 7 } } }
 -- Stone runes are items too: { Base = "RuneReach", Rarity = "Rune", Affixes = {} } (bases added from RuneData below)
+-- Stone Tablets: { Base = "StoneTablet", Rarity = "Magic", Tier = 3, Affixes = { { Id = "MonsterSpeed", Value = 20 } } }
+-- (their affixes come from TabletData.Mods, see getAffixPool)
 local RuneData = require(script.Parent:WaitForChild("RuneData"))
+local TabletData = require(script.Parent:WaitForChild("TabletData"))
 
 export type Affix = {
 	Id: string,
@@ -17,11 +20,12 @@ export type Item = {
 	Base: string,
 	Rarity: string,
 	Affixes: { Affix },
+	Tier: number?, -- Stone Tablets only
 }
 
 type BaseInfo = {
 	Name: string,
-	Slot: string, -- "Rune" = a stone rune: socketed into a skill, never equipped
+	Slot: string, -- "Rune" = socketed into a skill, "Tablet" = placed in the portal; neither can be equipped
 	Rune: string?, -- Rune bases: RuneData.Runes key
 	AllowOffHand: boolean?, -- For MainHand weapons: true = can equip OffHand, false = locks OffHand slot
 	Implicit: { [string]: number }, -- Stats every copy of this base always has
@@ -89,6 +93,7 @@ ItemData.SlotNames = {
 	Weapon = "Main Hand",
 	Armor = "Cloth",
 	Rune = "Skill Rune",
+	Tablet = "Portal Tablet",
 } :: { [string]: string }
 
 -- Check if an item's Base.Slot can be worn in a given equipment slot key
@@ -160,6 +165,12 @@ ItemData.Bases = {
 		Slot = "Cloth",
 		Implicit = { MaxHealth = 30 },
 	},
+	-- Endgame: placed in the Lobby portal (Loot drops it on its own, see EnemyData Drops.TabletChance)
+	StoneTablet = {
+		Name = "Stone Tablet",
+		Slot = "Tablet",
+		Implicit = {},
+	},
 } :: { [string]: BaseInfo }
 
 -- One item base per stone rune (Loot drops them separately from gear, see EnemyData Drops.RuneChance)
@@ -227,9 +238,20 @@ ItemData.Rarities = {
 } :: { [string]: RarityInfo }
 ItemData.RarityOrder = { "Normal", "Magic", "Rare" }
 
+function ItemData.isTablet(item: Item): boolean
+	local base = ItemData.Bases[item.Base]
+	return base ~= nil and base.Slot == "Tablet"
+end
+
+-- Where an item's affixes come from: TabletData.Mods for Stone Tablets, ItemData.Affixes for everything else
+function ItemData.getAffixPool(item: Item): { [string]: { Kind: string, Min: number, Max: number } }
+	return if ItemData.isTablet(item) then TabletData.Mods :: any else ItemData.Affixes :: any
+end
+
 function ItemData.getName(item: Item): string
 	local base = ItemData.Bases[item.Base]
-	return if base then base.Name else item.Base
+	local name = if base then base.Name else item.Base
+	return if item.Tier then string.format("%s (Tier %d)", name, item.Tier) else name
 end
 
 function ItemData.formatStat(stat: string, value: number): string
@@ -257,6 +279,19 @@ end
 
 -- Tooltip lines: implicit stats (always on this base) and rolled affixes
 function ItemData.getLines(item: Item): ({ string }, { string })
+	-- Stone Tablets: what the whole run gets (tier + mods), then each mod
+	if ItemData.isTablet(item) then
+		local effects = TabletData.getEffects(item :: any)
+		local lines = {}
+		for _, affix in ipairs(item.Affixes) do
+			local mod = TabletData.Mods[affix.Id]
+			if mod then
+				table.insert(lines, string.format(mod.Text, affix.Value))
+			end
+		end
+		return { TabletData.describe(effects) }, lines
+	end
+
 	local implicitLines = {}
 	local base = ItemData.Bases[item.Base]
 	if base then
