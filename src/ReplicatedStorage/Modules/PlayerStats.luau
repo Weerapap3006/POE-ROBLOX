@@ -59,7 +59,8 @@ function PlayerStats.expToNext(level: number): number
 	return 60 + level * 40
 end
 
-function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item }): Stats
+-- bonus = extra stats on top, e.g. the passive tree (PassiveData.getStats)
+function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item }, bonus: { [string]: number }?): Stats
 	local stats: { [string]: number } = {
 		MaxHealth = PlayerStats.BASE_MAX_HEALTH + (level - 1) * PlayerStats.MAX_HEALTH_PER_LEVEL,
 		MaxMana = PlayerStats.BASE_MAX_MANA + (level - 1) * PlayerStats.MAX_MANA_PER_LEVEL,
@@ -78,6 +79,9 @@ function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item 
 		for stat, value in pairs(ItemData.getStats(item)) do
 			stats[stat] = (stats[stat] or 0) + value
 		end
+	end
+	for stat, value in pairs(bonus or {}) do
+		stats[stat] = (stats[stat] or 0) + value
 	end
 	return stats :: any
 end

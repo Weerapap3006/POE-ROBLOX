@@ -53,6 +53,7 @@ local ItemData = {}
 ItemData.StatText = {
 	FlatDamage = "+%d Damage",
 	MaxHealth = "+%d Max Health",
+	MaxMana = "+%d Max Mana", -- No affix yet: used by the passive tree
 	AttackSpeed = "+%d%% Attack Speed",
 	MaxEnergyShield = "+%d Max Energy Shield",
 	EnergyShieldRecharge = "+%d%% Energy Shield Recharge Rate",

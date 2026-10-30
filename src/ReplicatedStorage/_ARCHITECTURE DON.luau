@@ -30,6 +30,7 @@
           ├── EnemyData : ค่าศัตรู Stone Grunt / บอส Stone Guardian (เลือด, ท่าตี + ธาตุ, EXP, ดรอป)
           ├── Elements : ธาตุ ไฟ/น้ำแข็ง/สายฟ้า, สี, ตัวเลขสถานะผิดปกติ, ค่าต้านทานสูงสุด
           ├── RuneData : รูนสลักหิน 6 แบบ (ชื่อ, คำอธิบาย, ใส่สกิลไหนได้, ตัวเลขผล)
+          ├── PassiveData : ผังพาสซีฟ 35 จุด + คลาส Warrior / Ranger / Mystic + กฎลงแต้ม
           ├── StoneData : หินคราฟต์ 3 แบบ (Ascension / Carving / Shifting)
           ├── TabletData : แผ่นศิลา (ม็อด, ผลต่อ Tier, สูตรผลของรอบ)
           ├── ItemData : ไอเทม, affix (รวม ES, ดาเมจธาตุ, ค่าต้านทาน), ความหายาก, ช่องสวมใส่ 9 ช่อง
@@ -62,7 +63,8 @@
           ├── HudClient (LocalScript) : แถบ ES/เลือด/มานา/EXP, แถบเลือดศัตรู/บอส, ข้อความ, หน้าจอตาย
           ├── InventoryClient (LocalScript) : หน้าต่างกระเป๋า (กด B)
           ├── EnemyVisualsClient (LocalScript) : ท่าเดินศัตรู + คุมจำนวน Highlight ไม่ให้เกิน 31
-          └── MinimapClient (LocalScript) : มินิแมพ (กด M ขยายกลางจอ) + หน้าตั้งค่า (กด P, วาร์ปกลับ Lobby)
+          ├── MinimapClient (LocalScript) : มินิแมพ (กด M ขยายกลางจอ) + หน้าตั้งค่า (กด P, วาร์ปกลับ Lobby)
+          └── PassiveTreeClient (LocalScript) : หน้าต่างผังพาสซีฟ + เลือกคลาส (กด K)
 
 ------------------------------------------------------------------------------
 2. อยากแก้ค่าอะไร ให้ไปที่ไฟล์ไหน? (QUICK EDIT GUIDE):
@@ -82,6 +84,8 @@
    - แก้ผลของรูน / เพิ่มรูนใหม่              --> ReplicatedStorage.Modules.RuneData
      (จำนวนช่อง: SkillData Sockets, โอกาสดรอป: EnemyData Drops.RuneChance,
       ผลจริง: ServerScriptService.CombatServer, หน้าตา: CombatClient getSkillLook)
+   - แก้ผังพาสซีฟ / คลาส / โบนัสเริ่มต้น      --> ReplicatedStorage.Modules.PassiveData
+     (หน้าต่าง + ปุ่ม K: StarterPlayerScripts.PassiveTreeClient, ค่ารีเซ็ต: PlayerData)
    - แก้หินคราฟต์ (ชื่อ / โอกาสดรอปแต่ละแบบ)  --> ReplicatedStorage.Modules.StoneData
      (กฎว่าหินทำอะไร: ServerStorage.Modules.Crafting useStone, โอกาสดรอป: EnemyData Drops.StoneChance)
    - แก้แผ่นศิลา (ม็อด / ผลต่อ Tier / Tier สูงสุด) --> ReplicatedStorage.Modules.TabletData
@@ -106,7 +110,7 @@
    - ReplicatedStorage._ARCHITECTURE DON          --> src/ReplicatedStorage/_ARCHITECTURE DON.luau
    - ReplicatedStorage._ARCHITECTURE WEE          --> src/ReplicatedStorage/_ARCHITECTURE WEE.luau
    - ReplicatedStorage.Modules.*                  --> src/ReplicatedStorage/Modules/ชื่อ.luau
-       (SkillData, EnemyData, Elements, RuneData, StoneData, TabletData, ItemData, PlayerStats, Ui)
+       (SkillData, EnemyData, Elements, RuneData, StoneData, TabletData, PassiveData, ItemData, PlayerStats, Ui)
    - ReplicatedStorage.Remotes.*                  --> src/ReplicatedStorage/Remotes/ชื่อ.model.json
        (CombatRemote, DodgeRemote, FlaskRemote, InventoryRemote, NotifyRemote, TeleportRemote)
    - ServerScriptService.*                        --> src/ServerScriptService/ชื่อ.server.luau
@@ -114,7 +118,7 @@
    - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
        (PlayerData, PlayerResources, Ailments, Crafting, DungeonRun, EnemyService, Loot)
    - StarterPlayerScripts.*                       --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
-       (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient, MinimapClient)
+       (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient, MinimapClient, PassiveTreeClient)
 
    จังหวะที่โดนทับ:
    - ตอนกด Connect ใน Rojo: Studio ถูกทำให้ตรงกับไฟล์ทั้งหมด
@@ -208,6 +212,23 @@
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - เทสใน Studio ผ่าน (ผู้ใช้ยืนยัน): ระบบเฟส 7 ทั้งหมด (ขวดยา, มานา, ES, ธาตุ, คีย์ลัดกระเป๋า, รูน,
+     หินคราฟต์, แผ่นศิลา, ผังพาสซีฟ + คลาส) -> ไอเดียในหัวข้อ 7 ของ Google Doc ทำครบทุกข้อ
+     + Google Doc "Project poe" + Project poe.docx: งานเฟส 7 = เทสผ่าน รอให้คนลองเล่น, ไอเดียทุกข้อ = ทำแล้ว,
+       ก้าวถัดไป = ให้คนลองเล่นเฟส 7 ดูบาลานซ์ แล้วจดไอเดียใหม่
+     + แถวบาลานซ์ใน ARCHITECTURE.md ยังเขียน "ยังไม่ได้ playtest" ไว้ (เทสว่าทำงาน ไม่ใช่ปรับตัวเลขกับคนเล่นจริง)
+   - เฟส 7 ข้อ 6 (สุดท้าย): ผังพาสซีฟ + คลาส [ยังไม่ได้เทสใน Studio]:
+     + PassiveData (ใหม่): ผังเดียว 35 จุด, คลาส = จุดเริ่ม + โบนัส (Warrior เลือด/ดาเมจ, Ranger ความเร็วโจมตี/
+       สายฟ้า, Mystic ES/มานา/ไฟ-น้ำแข็ง), Notable คลาสละ 1 + Heart of Stone ตรงกลาง + สะพาน 3 จุด,
+       1 แต้มต่อเลเวล (Lv 30 = 29 จาก 32 จุด), กฎ whyNot / getStats / sanitize ใช้ร่วม
+     + PassiveTreeClient (ใหม่): หน้าต่างผัง (กด K / ปุ่ม Passives บอกแต้มเหลือ), การ์ดเลือกคลาส
+       (เปิดเองถ้ายังไม่มีคลาส), Allocate / Shift+คลิก, Change Class, Reset Tree (ฟรีช่วงเทส)
+     + PlayerData: Class + Passives เซฟลง DataStore, action ChooseClass / AllocatePassive / ResetPassives,
+       ข้อความเลเวลอัปบอก +Passive Point
+     + PlayerStats.compute(level, equipped, bonus) รับสเตตัสจากผัง, ItemData.StatText.MaxMana
+     + ARCHITECTURE.md: หัวข้อ PassiveTreeClient / PassiveData + PlayerData + บาลานซ์ + KNOWN ISSUES
+     + Google Doc "Project poe" + Project poe.docx: งานเฟส 7 + ไอเดียผังพาสซีฟ = กำลังทำ,
+       ก้าวถัดไป = เทสเฟส 7 ทั้งหมด (ไอเดียหัวข้อ 7 ครบแล้ว) ให้คนลองเล่นอีกรอบ
    - แก้จากเทส: ไม่รู้ว่าของชิ้นไหนเพิ่ม affix ได้:
      + InventoryClient: จุด affix ใต้ชื่อของ (ทึบ = มี, กลวง = ว่าง) ทั้งในตารางและช่องสวมใส่,
        ชี้เมาส์ที่ช่องหิน = ของที่หินนั้นใช้ได้เรือง (มือถือ: แตะหินตอนไม่ได้เลือกของ = ปักไว้),
