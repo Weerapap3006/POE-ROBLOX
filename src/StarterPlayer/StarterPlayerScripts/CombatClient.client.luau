@@ -1,5 +1,5 @@
 -- ==========================================
--- COMBAT CLIENT (Aiming, Skill Input & Skill Bar, Dodge Roll, Life/Mana Flasks, VFX, Enemy Telegraphs & Damage Numbers)
+-- COMBAT CLIENT (Aiming, Skill Input & Skill Bar, Dodge Dash, Life/Mana Flasks, VFX, Enemy Telegraphs & Damage Numbers)
 -- Path: StarterPlayer.StarterPlayerScripts.CombatClient
 -- ==========================================
 local Players = game:GetService("Players")
@@ -35,8 +35,9 @@ local SKILL_BAR: { { SkillId: string, KeyText: string, Inputs: { EnumItem } } } 
 }
 local TOUCH_AUTO_AIM_RANGE = 25 -- Mobile: skills aim at the nearest enemy within this many studs
 local DODGE_KEY = Enum.KeyCode.Space -- Takes over the jump key (jumping is turned off)
-local ROLL_DIP = 0.8 -- Studs the body drops at the middle of the roll pose
-local ROLL_PIVOT = 1 -- Studs above the hips that the body somersaults around
+local DASH_CROUCH = 0.25 -- Studs the body lowers slightly during a dash
+local DASH_LEAN_ANGLE = math.rad(38) -- Forward lean angle (radians) during a dash (no 360 flip)
+local DASH_MAX_FORCE = 18000 -- Finite force so hitting a wall never flings the character into the sky
 -- Flask slots after the skills (Kind = key in PlayerStats.FLASKS). Sparkle = rises from a player drinking it
 local FLASK_SLOTS: { { Kind: string, KeyText: string, Key: Enum.KeyCode, Liquid: Color3, Sparkle: Color3 } } = {
 	{ Kind = "Life", KeyText = "1", Key = Enum.KeyCode.One, Liquid = Ui.Colors.Health, Sparkle = Color3.fromRGB(255, 110, 120) },
@@ -56,7 +57,7 @@ local lastUseTimes: { [string]: number } = {}
 local heldSkills: { [string]: boolean } = {} -- Holding the button keeps attacking
 local comboStep = 1
 local currentMouseWorldPos = Vector3.zero
-local dodgeEndTime = 0 -- Rolling until this time: no attacks, no turning toward the mouse
+local dodgeEndTime = 0 -- Dashing until this time: no attacks, no turning toward the mouse
 local isTouchOnly = Ui.isTouchOnly()
 
 -- Raycast parameters (ignore player's own character and VFX)
@@ -130,7 +131,7 @@ local function updateMouseAiming(deltaTime: number)
 		return
 	end
 
-	-- Rolling: keep facing the roll direction set when it started
+	-- Dashing: keep facing the dash direction set when it started
 	if os.clock() < dodgeEndTime then
 		humanoid.AutoRotate = false
 		return
@@ -175,7 +176,7 @@ type SwingState = {
 }
 local activeSwings: { [Motor6D]: SwingState } = {}
 
--- Dodge roll: the R15 Root joint (hips) somersaults once over DODGE_DURATION, same base-pose tracking as swings
+-- Dodge Dash: the R15 Root joint leans forward sleekly over DODGE_DURATION (no 360 flip)
 type RollState = {
 	startTime: number,
 	basePose: CFrame,
@@ -228,10 +229,11 @@ RunService.PreSimulation:Connect(function()
 			motor.Transform = roll.basePose
 			activeRolls[motor] = nil
 		else
-			-- Full forward flip (top of the body goes forward and down), dipping low halfway through
-			local dip = CFrame.new(0, -ROLL_DIP * math.sin(math.pi * t), 0)
-			local flip = CFrame.new(0, ROLL_PIVOT, 0) * CFrame.Angles(-2 * math.pi * t, 0, 0) * CFrame.new(0, -ROLL_PIVOT, 0)
-			local pose = roll.basePose * dip * flip
+			-- Forward Dash pose: lean forward smoothly and crouch slightly without flipping upside down
+			local weight = math.sin(math.pi * t)
+			local crouch = CFrame.new(0, -DASH_CROUCH * weight, 0)
+			local lean = CFrame.Angles(-DASH_LEAN_ANGLE * weight, 0, 0)
+			local pose = roll.basePose * crouch * lean
 			motor.Transform = pose
 			roll.lastWritten = pose
 		end
@@ -244,6 +246,13 @@ local function playRollPose(character: Model)
 	if rootJoint then
 		activeRolls[rootJoint] = { startTime = os.clock(), basePose = rootJoint.Transform, lastWritten = nil }
 	end
+	-- Sweep both arms back slightly during the dash for a sleek anime dash silhouette
+	local rightUpperArm = character:FindFirstChild("RightUpperArm")
+	local rightShoulder = rightUpperArm and rightUpperArm:FindFirstChild("RightShoulder") :: Motor6D?
+	local leftUpperArm = character:FindFirstChild("LeftUpperArm")
+	local leftShoulder = leftUpperArm and leftUpperArm:FindFirstChild("LeftShoulder") :: Motor6D?
+	startSwing(rightShoulder, CFrame.Angles(math.rad(-45), 0, math.rad(15)))
+	startSwing(leftShoulder, CFrame.Angles(math.rad(-45), 0, math.rad(-15)))
 end
 
 local function getSwingMotors(character: Model): (Motor6D?, Motor6D?)
@@ -595,7 +604,7 @@ local function useSkill(skillId: string)
 		return
 	end
 
-	-- No attacking mid-roll or while frozen (held buttons pick up again once it ends)
+	-- No attacking mid-dash or while frozen (held buttons pick up again once it ends)
 	local now = os.clock()
 	if now < dodgeEndTime or character:GetAttribute("Frozen") then
 		return
@@ -663,7 +672,7 @@ UserInputService.WindowFocusReleased:Connect(function()
 end)
 
 -- ==========================================
--- 6. DODGE ROLL (replaces jumping: Space / mobile Dodge button)
+-- 6. DODGE DASH (replaces jumping: Space / mobile Dodge button)
 -- ==========================================
 -- No jumping in this game. Jump power 0 also hides Roblox's mobile jump button
 local function disableJump(character: Model)
@@ -681,7 +690,7 @@ if player.Character then
 end
 player.CharacterAdded:Connect(disableJump)
 
--- Roll where the player is walking; standing still rolls toward the mouse (PC) or straight ahead (mobile)
+-- Dash where the player is walking; standing still dashes toward the mouse (PC) or straight ahead (mobile)
 local function getDodgeDirection(humanoid: Humanoid, rootPart: BasePart): Vector3
 	local direction = humanoid.MoveDirection
 	if direction.Magnitude < 0.1 then
@@ -705,9 +714,9 @@ local function getDodgeAttachment(rootPart: BasePart): Attachment
 	return attachment
 end
 
--- Pushes the character along the ground for the roll. Only the flat (X/Z) velocity is driven,
--- so gravity still works when rolling off a ledge
-local function pushRoll(rootPart: BasePart, direction: Vector3)
+-- Pushes the character along the ground for the dash with finite force, obstacle detection,
+-- and upward-velocity clamping so hitting a wall/object never launches the character into the air
+local function pushRoll(character: Model, rootPart: BasePart, direction: Vector3)
 	local speed = PlayerStats.DODGE_DISTANCE / PlayerStats.DODGE_DURATION
 	local mover = Instance.new("LinearVelocity")
 	mover.Name = "DodgeVelocity"
@@ -717,10 +726,47 @@ local function pushRoll(rootPart: BasePart, direction: Vector3)
 	mover.PrimaryTangentAxis = Vector3.xAxis
 	mover.SecondaryTangentAxis = Vector3.zAxis
 	mover.PlaneVelocity = Vector2.new(direction.X, direction.Z) * speed
-	mover.MaxForce = math.huge
+	mover.MaxForce = DASH_MAX_FORCE
 	mover.Parent = rootPart
+
+	local wallParams = RaycastParams.new()
+	wallParams.FilterType = Enum.RaycastFilterType.Exclude
+	wallParams.RespectCanCollide = true
+	wallParams.FilterDescendantsInstances = { character }
+
+	local stepConn: RBXScriptConnection?
+	stepConn = RunService.Heartbeat:Connect(function()
+		if not mover.Parent or not rootPart.Parent then
+			if stepConn then
+				stepConn:Disconnect()
+			end
+			return
+		end
+
+		-- Stop pushing forward if a wall/obstacle is directly in front of the character
+		local hit = workspace:Raycast(rootPart.Position, direction * 2.6, wallParams)
+		if hit then
+			mover.PlaneVelocity = Vector2.zero
+		end
+
+		-- Clamp any upward vertical bounce so colliding with objects never flings the player upward
+		local vel = rootPart.AssemblyLinearVelocity
+		if vel.Y > 1 then
+			rootPart.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+		end
+	end)
+
 	task.delay(PlayerStats.DODGE_DURATION, function()
+		if stepConn then
+			stepConn:Disconnect()
+		end
 		mover:Destroy()
+		if rootPart.Parent then
+			local vel = rootPart.AssemblyLinearVelocity
+			if vel.Y > 1 then
+				rootPart.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+			end
+		end
 	end)
 end
 
@@ -732,7 +778,7 @@ local function dodge()
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	-- Frozen (an enemy's cold hit): can't roll out of it
+	-- Frozen (an enemy's cold hit): can't dash out of it
 	if not humanoid or not rootPart or humanoid.Health <= 0 or character:GetAttribute("Frozen") then
 		return
 	end
@@ -746,7 +792,7 @@ local function dodge()
 
 	local direction = getDodgeDirection(humanoid, rootPart)
 	rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + direction)
-	pushRoll(rootPart, direction)
+	pushRoll(character, rootPart, direction)
 	playRollPose(character)
 
 	-- The server grants the invulnerability window (enemy hits miss) after its own cooldown check
