@@ -14,11 +14,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Rokit Toolchain
-        uses: rojo-rbx/setup-rokit@v2
-
-      - name: Install Tools
-        run: rokit install
+      - name: Setup Rokit
+        uses: paradoxum-games/setup-rokit@v3
+        with:
+          cache: true
 
       - name: Static Analysis (Selene)
         run: selene src
