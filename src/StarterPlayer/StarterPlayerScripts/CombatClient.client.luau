@@ -176,9 +176,11 @@ type SwingState = {
 }
 local activeSwings: { [Motor6D]: SwingState } = {}
 
--- Dodge Dash: the R15 Root joint leans forward sleekly over DODGE_DURATION (no 360 flip)
+-- Dodge Dash: locks torso, legs, and arms into a fixed forward Dash pose over DODGE_DURATION
+-- (overrides the walking animation completely so the character glides/dashes instead of pedaling feet)
 type RollState = {
 	startTime: number,
+	targetPose: CFrame,
 	basePose: CFrame,
 	lastWritten: CFrame?,
 }
@@ -229,30 +231,38 @@ RunService.PreSimulation:Connect(function()
 			motor.Transform = roll.basePose
 			activeRolls[motor] = nil
 		else
-			-- Forward Dash pose: lean forward smoothly and crouch slightly without flipping upside down
-			local weight = math.sin(math.pi * t)
-			local crouch = CFrame.new(0, -DASH_CROUCH * weight, 0)
-			local lean = CFrame.Angles(-DASH_LEAN_ANGLE * weight, 0, 0)
-			local pose = roll.basePose * crouch * lean
+			-- Snap quickly into the fixed Dash pose and hold it (overrides walk cycle completely)
+			local weight = math.sin(math.pi * math.clamp(t, 0, 1)) ^ 0.4
+			local pose = roll.basePose:Lerp(roll.targetPose, weight)
 			motor.Transform = pose
 			roll.lastWritten = pose
 		end
 	end
 end)
 
-local function playRollPose(character: Model)
-	local lowerTorso = character:FindFirstChild("LowerTorso")
-	local rootJoint = lowerTorso and lowerTorso:FindFirstChild("Root") :: Motor6D?
-	if rootJoint then
-		activeRolls[rootJoint] = { startTime = os.clock(), basePose = rootJoint.Transform, lastWritten = nil }
+local function lockDashJoint(character: Model, partName: string, jointName: string, targetPose: CFrame, now: number)
+	local part = character:FindFirstChild(partName)
+	local motor = part and part:FindFirstChild(jointName) :: Motor6D?
+	if motor then
+		activeRolls[motor] = {
+			startTime = now,
+			targetPose = targetPose,
+			basePose = motor.Transform,
+			lastWritten = nil,
+		}
 	end
-	-- Sweep both arms back slightly during the dash for a sleek anime dash silhouette
-	local rightUpperArm = character:FindFirstChild("RightUpperArm")
-	local rightShoulder = rightUpperArm and rightUpperArm:FindFirstChild("RightShoulder") :: Motor6D?
-	local leftUpperArm = character:FindFirstChild("LeftUpperArm")
-	local leftShoulder = leftUpperArm and leftUpperArm:FindFirstChild("LeftShoulder") :: Motor6D?
-	startSwing(rightShoulder, CFrame.Angles(math.rad(-45), 0, math.rad(15)))
-	startSwing(leftShoulder, CFrame.Angles(math.rad(-45), 0, math.rad(-15)))
+end
+
+local function playRollPose(character: Model)
+	local now = os.clock()
+	-- Torso leans forward, legs freeze in a dash stride (no walking), arms sweep back
+	lockDashJoint(character, "LowerTorso", "Root", CFrame.new(0, -DASH_CROUCH, 0) * CFrame.Angles(-DASH_LEAN_ANGLE, 0, 0), now)
+	lockDashJoint(character, "LeftUpperLeg", "LeftHip", CFrame.Angles(math.rad(28), 0, 0), now)
+	lockDashJoint(character, "LeftLowerLeg", "LeftKnee", CFrame.Angles(math.rad(-40), 0, 0), now)
+	lockDashJoint(character, "RightUpperLeg", "RightHip", CFrame.Angles(math.rad(-38), 0, 0), now)
+	lockDashJoint(character, "RightLowerLeg", "RightKnee", CFrame.Angles(math.rad(-25), 0, 0), now)
+	lockDashJoint(character, "RightUpperArm", "RightShoulder", CFrame.Angles(math.rad(-50), 0, math.rad(12)), now)
+	lockDashJoint(character, "LeftUpperArm", "LeftShoulder", CFrame.Angles(math.rad(-50), 0, math.rad(-12)), now)
 end
 
 local function getSwingMotors(character: Model): (Motor6D?, Motor6D?)
@@ -714,10 +724,13 @@ local function getDodgeAttachment(rootPart: BasePart): Attachment
 	return attachment
 end
 
--- Pushes the character along the ground for the dash with finite force, obstacle detection,
+-- Pushes the character along the ground with a snappy burst ("ฟึ้บ!"), obstacle detection,
 -- and upward-velocity clamping so hitting a wall/object never launches the character into the air
 local function pushRoll(character: Model, rootPart: BasePart, direction: Vector3)
-	local speed = PlayerStats.DODGE_DISTANCE / PlayerStats.DODGE_DURATION
+	local baseSpeed = PlayerStats.DODGE_DISTANCE / PlayerStats.DODGE_DURATION
+	local startTime = os.clock()
+	local flatDir = Vector2.new(direction.X, direction.Z)
+
 	local mover = Instance.new("LinearVelocity")
 	mover.Name = "DodgeVelocity"
 	mover.Attachment0 = getDodgeAttachment(rootPart)
@@ -725,7 +738,7 @@ local function pushRoll(character: Model, rootPart: BasePart, direction: Vector3
 	mover.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
 	mover.PrimaryTangentAxis = Vector3.xAxis
 	mover.SecondaryTangentAxis = Vector3.zAxis
-	mover.PlaneVelocity = Vector2.new(direction.X, direction.Z) * speed
+	mover.PlaneVelocity = flatDir * (baseSpeed * 1.65)
 	mover.MaxForce = DASH_MAX_FORCE
 	mover.Parent = rootPart
 
@@ -747,6 +760,11 @@ local function pushRoll(character: Model, rootPart: BasePart, direction: Vector3
 		local hit = workspace:Raycast(rootPart.Position, direction * 2.6, wallParams)
 		if hit then
 			mover.PlaneVelocity = Vector2.zero
+		else
+			-- High initial burst speed that eases down smoothly at the end of the dash
+			local progress = math.clamp((os.clock() - startTime) / PlayerStats.DODGE_DURATION, 0, 1)
+			local burstMultiplier = 1.65 - 1.30 * progress
+			mover.PlaneVelocity = flatDir * (baseSpeed * burstMultiplier)
 		end
 
 		-- Clamp any upward vertical bounce so colliding with objects never flings the player upward

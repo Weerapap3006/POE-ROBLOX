@@ -40,7 +40,7 @@ PlayerStats.ENERGY_SHIELD_RECHARGE_PERCENT = 0.25 -- Of max energy shield per se
 
 -- Dodge roll (Space / mobile Dodge button). Jumping is turned off, the roll replaces it
 PlayerStats.DODGE_COOLDOWN = 1 -- Seconds between rolls (AttackSpeed doesn't change it)
-PlayerStats.DODGE_DURATION = 0.35 -- Seconds the roll pushes the character
+PlayerStats.DODGE_DURATION = 0.18 -- Seconds the dash bursts the character forward
 PlayerStats.DODGE_DISTANCE = 13 -- Studs covered by one roll
 PlayerStats.DODGE_INVULNERABLE_TIME = 0.4 -- Enemy hits miss for this long after the server gets the roll
 
