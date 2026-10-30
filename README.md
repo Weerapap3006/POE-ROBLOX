@@ -1,6 +1,6 @@
 # Project poe (POE-ROBLOX)
 
-เกม ARPG แนว 2.5D Isometric บน Roblox ทำกัน 2 คนผ่าน Team Create
+เกม ARPG แนว 2.5D Isometric บน Roblox ทำกัน 3 คนผ่าน Team Create
 
 - **โค้ด** (ทุกอย่างในโฟลเดอร์ `src/`) เก็บใน GitHub repo นี้ แก้ใน VS Code แล้วให้ Rojo sync เข้า Studio
 - **แมพ / โมเดล / StarterCharacter** อยู่ใน Team Create แก้ใน Studio ได้ตามปกติ
