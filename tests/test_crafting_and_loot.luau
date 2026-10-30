@@ -1,5 +1,5 @@
 --[[
-   Unit Test for Crafting.luau & StoneData.luau & Loot rolling
+   Unit Test for Crafting.luau, StoneData.luau & Loot.luau
    Run via: lune run tests/test_crafting_and_loot.luau
 ]]
 
@@ -106,7 +106,7 @@ craftingEnv.game = {
 	GetService = function(_self, name)
 		if name == "ReplicatedStorage" then
 			return {
-				WaitForChild = function(_self2, folderName)
+				WaitForChild = function(_self2, _folderName)
 					return {
 						WaitForChild = function(_self3, moduleName)
 							if moduleName == "ItemData" then
@@ -135,6 +135,64 @@ end
 local craftingBytecode = luau.compile(fs.readFile("src/ServerStorage/Modules/Crafting.luau"))
 local Crafting = luau.load(craftingBytecode, { environment = craftingEnv })()
 
+-- Load Loot
+local guidCounter = 0
+local lootEnv: { [string]: any } = {}
+for k, v in pairs(mockEnv) do
+	lootEnv[k] = v
+end
+lootEnv.game = {
+	GetService = function(_self, name)
+		if name == "Debris" then
+			return { AddItem = function() end }
+		elseif name == "HttpService" then
+			return {
+				GenerateGUID = function()
+					guidCounter += 1
+					return "mock-guid-" .. tostring(guidCounter)
+				end,
+			}
+		elseif name == "ReplicatedStorage" then
+			return {
+				WaitForChild = function(_self2, _folderName)
+					return {
+						WaitForChild = function(_self3, moduleName)
+							return moduleName
+						end,
+					}
+				end,
+			}
+		end
+		error("Service not found: " .. tostring(name))
+	end,
+}
+lootEnv.script = {
+	Parent = {
+		WaitForChild = function(_self, moduleName)
+			return moduleName
+		end,
+	},
+}
+lootEnv.require = function(target)
+	if target == "ItemData" then
+		return ItemData
+	elseif target == "RuneData" then
+		return RuneData
+	elseif target == "StoneData" then
+		return StoneData
+	elseif target == "TabletData" then
+		return TabletData
+	elseif target == "Crafting" then
+		return Crafting
+	elseif target == "PlayerData" then
+		return {}
+	end
+	return require(target)
+end
+
+local lootBytecode = luau.compile(fs.readFile("src/ServerStorage/Modules/Loot.luau"))
+local Loot = luau.load(lootBytecode, { environment = lootEnv })()
+
 local passed = 0
 local failed = 0
 
@@ -156,7 +214,7 @@ local function assertEq(actual: any, expected: any, message: string?)
 	end
 end
 
-print("🧪 Running Unit Tests: Crafting & Item Rolling")
+print("🧪 Running Unit Tests: Crafting & Loot")
 
 test("Ascension Stone: Normal -> Magic (1 affix)", function()
 	local item: any = { Id = "test_1", Base = "IronSword", Rarity = "Normal", Affixes = {} }
@@ -229,6 +287,31 @@ test("Cannot use Carving on Normal item", function()
 	local item: any = { Id = "test_6", Base = "IronSword", Rarity = "Normal", Affixes = {} }
 	local err = Crafting.useStone("Carving", item)
 	assertEq(typeof(err), "string", "Cannot carve Normal item")
+end)
+
+test("Loot.rollItem generates gear with valid base and rarity", function()
+	local item = Loot.rollItem("Rare")
+	assertEq(item.Rarity, "Rare", "Rolled item should be Rare")
+	assertEq(#item.Affixes, 3, "Rare rolled item should have 3 affixes")
+	local base = ItemData.Bases[item.Base]
+	assertEq(base ~= nil, true, "Base must exist in ItemData.Bases")
+	assertEq(base.Slot ~= "Rune" and base.Slot ~= "Tablet", true, "Gear roll never rolls Runes or Tablets")
+end)
+
+test("Loot.rollRune generates valid Stone Rune", function()
+	local runeItem = Loot.rollRune()
+	assertEq(runeItem.Rarity, "Rune", "Rune item rarity should be Rune")
+	assertEq(#runeItem.Affixes, 0, "Runes have 0 affixes")
+	local runeId = ItemData.getRuneId(runeItem)
+	assertEq(runeId ~= nil, true, "Item should resolve to a valid runeId")
+end)
+
+test("Loot.rollTablet generates StoneTablet with clamped tier", function()
+	local tablet = Loot.rollTablet(15, "Magic") -- Max tier is 10
+	assertEq(tablet.Base, "StoneTablet", "Base should be StoneTablet")
+	assertEq(tablet.Rarity, "Magic", "Rarity should be Magic")
+	assertEq(tablet.Tier, 10, "Tier 15 should be clamped to MAX_TIER (10)")
+	assertEq(#tablet.Affixes >= 1 and #tablet.Affixes <= 2, true, "Magic tablet has 1-2 mods")
 end)
 
 print(string.format("\n📊 Results: %d passed, %d failed\n", passed, failed))
