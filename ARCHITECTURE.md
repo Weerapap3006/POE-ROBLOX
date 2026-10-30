@@ -36,12 +36,10 @@
  ┣ 💡 Lighting                         <-- [แสงและบรรยากาศแมพ]
  ┃
  ┣ 📂 ReplicatedStorage                <-- [โซนกลาง: เห็นทั้ง Client และ Server]
- ┃  ┣ 📜 _ARCHITECTURE DON (ModuleScript) <-- โน้ต + CHANGELOG ของ DON (chwwy)
- ┃  ┣ 📜 _ARCHITECTURE WEE (ModuleScript) <-- โน้ต + CHANGELOG ของ WEE (Weerapap3006)
  ┃  ┣ 📂 Remotes
  ┃  ┃  ┣ ⚡ CombatRemote (RemoteEvent)    <-- ใช้สกิล, เลขดาเมจ, ท่าโจมตีศัตรู
  ┃  ┃  ┣ ⚡ InventoryRemote (RemoteEvent) <-- สวมใส่/ถอด/ทิ้งของ + ส่งข้อมูลกระเป๋า
- ┃  ┃  ┣ ⚡ DodgeRemote (RemoteEvent)     <-- กลิ้งหลบ (ขอช่วงอมตะจาก Server + ให้คนอื่นเห็นท่ากลิ้ง)
+ ┃  ┃  ┣ ⚡ DodgeRemote (RemoteEvent)     <-- พุ่งหลบ (ขอช่วงอมตะจาก Server + ให้คนอื่นเห็นท่าพุ่งหลบ)
  ┃  ┃  ┣ ⚡ FlaskRemote (RemoteEvent)     <-- ดื่มขวดยาเลือด/มานา (Server หักจำนวนแล้วค่อยๆ ฟื้น + ให้คนอื่นเห็นประกาย)
  ┃  ┃  ┣ ⚡ NotifyRemote (RemoteEvent)    <-- ข้อความกลางจอ (ได้ของ, เลเวลอัป, เคลียร์ด่าน)
  ┃  ┃  ┗ ⚡ TeleportRemote (RemoteEvent)  <-- คำขอวาร์ปกลับโซนปลอดภัย (Lobby) จากหน้าต่างตั้งค่า
@@ -91,6 +89,30 @@
 
 ## 2. รายละเอียดแต่ละไฟล์ & คู่มือว่า "อยากแก้ตรงไหน ให้ไปที่ไฟล์อะไร"
 
+### ⚡ คู่มือทางลัด (Quick Edit Guide)
+* **ความแรงสกิล / คูลดาวน์ / ระยะโจมตี / มานาที่ใช้ / จำนวนช่องรูน** → `ReplicatedStorage > Modules > SkillData`
+* **เลือดศัตรู / ความเร็ว / ระยะมองเห็น (`AggroRange`) / ท่าโจมตี + ธาตุ / EXP / โอกาสดรอป** → `ReplicatedStorage > Modules > EnemyData`
+* **เพิ่มไอเทมใหม่ / เพิ่ม affix ใหม่ / โอกาสได้ของ Rare / ช่องสวมใส่ 9 ช่อง (`AllowOffHand`)** → `ReplicatedStorage > Modules > ItemData`
+* **หินคราฟต์ (ชื่อ, คำอธิบาย, โอกาสดรอป, กฎว่าใช้กับของชิ้นไหนได้)** → `ReplicatedStorage > Modules > StoneData` (ผลของหินอยู่ใน `ServerStorage > Modules > Crafting`)
+* **แผ่นศิลา endgame (ผลต่อ Tier, ม็อดความยาก + ของดรอป, Tier สูงสุด, โอกาสบอสดรอป Tier +1)** → `ReplicatedStorage > Modules > TabletData` (สถานะรอบอยู่ใน `ServerStorage > Modules > DungeonRun`)
+* **รูนสลักหิน (ชื่อ, คำอธิบาย, ใส่สกิลไหนได้, ตัวเลขผลของรูน)** → `ReplicatedStorage > Modules > RuneData` (ผลอยู่ใน `CombatServer`, หน้าตาอยู่ใน `CombatClient.getSkillLook`)
+* **ผังพาสซีฟ + คลาส (จุด, สเตตัสของแต่ละจุด, เส้นเชื่อม, โบนัสเริ่มต้นของคลาส, แต้มต่อเลเวล)** → `ReplicatedStorage > Modules > PassiveData` (หน้าต่างกด **K** อยู่ใน `PassiveTreeClient`)
+* **สีธาตุ / ความแรงไฟเผา / ช้าเท่าไร / เกณฑ์แช่แข็ง / ช็อตแรงแค่ไหน / เพดานค่าต้านทาน (75%)** → `ReplicatedStorage > Modules > Elements` (ลูปสถานะอยู่ใน `ServerStorage > Modules > Ailments`)
+* **เลือดเริ่มต้น / เลือด-มานา-ดาเมจต่อเลเวล / EXP ที่ใช้ขึ้นเลเวล / เลเวลสูงสุด** → `ReplicatedStorage > Modules > PlayerStats`
+* **มานาฟื้นเร็วแค่ไหน / ES รอกี่วิถึงชาร์จ / ขวดยาเลือด-มานา (จำนวนครั้ง, ฟื้นกี่ %, นานกี่วิ, ได้คืนต่อการฆ่า)** → `ReplicatedStorage > Modules > PlayerStats` (`FLASKS` ฯลฯ, ปุ่มและสีช่องขวดอยู่ใน `CombatClient` → `FLASK_SLOTS`)
+* **พุ่งหลบ (Dash / Dodge): ระยะพุ่ง / เวลาพุ่ง (`0.36` วิ) / คูลดาวน์ (`1` วิ) / ช่วงอมตะ (`0.4` วิ)** → `ReplicatedStorage > Modules > PlayerStats` (ปุ่มและท่าพุ่งหลบอยู่ใน `CombatClient` → `DODGE_KEY`, `DASH_DIP`, `DASH_LEAN_ANGLE`, `DASH_MAX_FORCE`)
+* **มุมกล้อง / ระยะซูม / ความนุ่มนวลกล้อง** → `StarterPlayerScripts > CameraScript`
+* **ท่าฟัน / สีคลื่นดาบ / ปุ่มกดสกิล / ตัวเลขดาเมจเด้ง** → `StarterPlayerScripts > CombatClient`
+* **แถบ ES-เลือด-มานา-EXP / แถบเลือดศัตรูและบอส / ข้อความแจ้งเตือน / หน้าจอตาย** → `StarterPlayerScripts > HudClient`
+* **หน้าต่างกระเป๋า (กด B) / ช่องสวมใส่ 9 ช่อง / คีย์ลัด Shift+คลิก, X** → `StarterPlayerScripts > InventoryClient`
+* **มินิแมพ (มุมขวาบน & กด M ขยายกลางจอ) / หน้าต่างตั้งค่า (กด P หรือปุ่ม SET) / ปุ่มวาร์ปกลับ Lobby** → `StarterPlayerScripts > MinimapClient`
+* **ท่าเดินศัตรู / จำนวนเส้นขอบ Highlight สูงสุด (27 จาก 31)** → `StarterPlayerScripts > EnemyVisualsClient`
+* **จังหวะ AI ศัตรูคิด / เวลาตกใจ "!" (`ALERT_TIME`) / เลือดเพิ่มตามจำนวนผู้เล่น / ประตูวาร์ปและรีเซ็ตด่าน** → `ServerStorage > Modules > EnemyService`
+* **ขนาดกระเป๋า (`INVENTORY_CAPACITY`) / ช่วงเวลาเซฟอัตโนมัติ / ชื่อ DataStore** → `ServerStorage > Modules > PlayerData`
+* **สีและฟอนต์กลางของ UI ทั้งเกม** → `ReplicatedStorage > Modules > Ui`
+
+---
+
 ### 🟦 ฝั่ง Client (`StarterPlayer > StarterPlayerScripts`)
 รันบนเครื่องผู้เล่นแต่ละคน ทำหน้าที่รับ Input, บังคับกล้อง, และแสดงผลภาพ/เอฟเฟกต์ให้ลื่นไหลทันที (0 ms) **ไม่มีสิทธิ์ตัดสินดาเมจ/ของ/เลเวล**
 
@@ -109,7 +131,7 @@
      * กดสกิล: **คลิกซ้าย** (`LMB`) = Slash, **คลิกขวา / Q** (`RMB / Q`) = Spin Slash (กดค้างเพื่อตีต่อเนื่อง) หรือแตะปุ่มในแถบสกิล
      * เช็คคูลดาวน์เบื้องต้น (หารด้วยความเร็วโจมตีจาก attribute `AttackSpeed`) แล้วเล่น VFX ทันที และส่ง `CombatRemote:FireServer(skillId, aimPoint)`
      * ท่าฟัน = เหวี่ยงแขน (`RightShoulder`) + บิดเอว (`Waist`) ด้วย `Motor6D.Transform` ซึ่งต้องเขียนซ้ำทุกเฟรมใน `RunService.PreSimulation` (รันหลัง Animator ไม่งั้นท่าเดิน/ยืนจะทับจนมองไม่เห็น)
-     * **พุ่งหลบ (Dash / Dodge):** กด **Space** (PC) หรือปุ่ม `Dodge` ขวาล่าง (มือถือ ตรงที่เคยเป็นปุ่มกระโดด) → พุ่งแบบ Burst ("ฟึ้บๆ") ไปทางที่เดินอยู่ (ยืนเฉยๆ = ไปทางเมาส์ / ทางที่หันบนมือถือ) ไกล `DODGE_DISTANCE` (13 studs) ใน `DODGE_DURATION` (`0.18` วิ) ด้วย `LinearVelocity` (`DASH_MAX_FORCE = 18000`, มี Raycast เช็กสิ่งกีดขวางข้างหน้าและล็อกแกน Y ไม่ให้ชนวัตถุแล้วตัวบิน) + ท่าพุ่งหลบที่ล็อกทั้งลำตัว แขน และขา (`lockDashJoint`) ให้พุ่งไปข้างหน้าโดยไม่ซอยเท้าเดินและไม่หมุนตีลังกา ระหว่างพุ่งตีไม่ได้ แล้วส่ง `DodgeRemote:FireServer(direction)` ให้ Server เปิดช่วงอมตะ
+     * **พุ่งหลบ (Dash / Dodge):** กด **Space** (PC) หรือปุ่ม `Dodge` ขวาล่าง (มือถือ ตรงที่เคยเป็นปุ่มกระโดด) → พุ่งแบบ Burst ("ฟึ้บๆ") ไปทางที่เดินอยู่ (ยืนเฉยๆ = ไปทางเมาส์ / ทางที่หันบนมือถือ) ไกล `DODGE_DISTANCE` (13 studs) ใน `DODGE_DURATION` (`0.36` วิ) ด้วย `LinearVelocity` (`DASH_MAX_FORCE = 18000`, มี Raycast เช็กสิ่งกีดขวางข้างหน้าและล็อกแกน Y ไม่ให้ชนวัตถุแล้วตัวบิน) + ท่าพุ่งหลบที่ล็อกทั้งลำตัว แขน และขา (`lockDashJoint`) ให้พุ่งไปข้างหน้าโดยไม่ซอยเท้าเดินและไม่หมุนตีลังกา ระหว่างพุ่งตีไม่ได้ แล้วส่ง `DodgeRemote:FireServer(direction)` ให้ Server เปิดช่วงอมตะ
      * **ไม่มีกระโดด:** ตั้ง `JumpPower` / `JumpHeight` = 0 + ปิดสถานะ `Jumping` ทุกครั้งที่เกิด (ปุ่มกระโดดของ Roblox บนมือถือหายไปเอง) และผูก Space กับกลิ้งหลบด้วย `ContextActionService` ที่ priority สูงกว่าปุ่มกระโดดเดิม
      * **มานา:** ก่อนใช้สกิลเช็ค attribute `Mana` ≥ `ManaCost` ของสกิล (ไม่พอ = ไม่ตี, Server เช็คซ้ำ) ช่องสกิลที่มานาไม่พอจะมีสีน้ำเงินทึบทับ (`NO_MANA_SHADE`) จนกว่ามานาจะฟื้นพอ
      * **ขวดยาเลือด / มานา:** กด **1** = เลือด (`Life`), **2** = มานา (`Mana`) หรือปุ่ม `Life` / `Mana` ข้างปุ่ม Dodge (มือถือ) → ถ้ายังไม่เต็ม, เหลืออย่างน้อย 1 ครั้ง (attribute `LifeFlaskCharges` / `ManaFlaskCharges`) และขวดนั้นไม่ได้กำลังฟื้นอยู่ → ประกายสีของขวดลอยขึ้นจากตัว (`ParticleEmitter` นาน `Duration` ของขวด) แล้วส่ง `FlaskRemote:FireServer(kind)` ให้ Server หักจำนวนและค่อยๆ ฟื้น ดื่มระหว่างกลิ้งได้
@@ -218,7 +240,7 @@
 
 5. **`Modules > PlayerStats`** — สเตตัสผู้เล่น
    * `BASE_MAX_HEALTH` (100), `MAX_HEALTH_PER_LEVEL` (+12/เลเวล), `DAMAGE_PER_LEVEL` (+2/เลเวล), `MAX_LEVEL` (30)
-   * พุ่งหลบ (Dash / Dodge): `DODGE_COOLDOWN` (1 วิ, ความเร็วโจมตีไม่มีผล), `DODGE_DURATION` (0.18 วิ พุ่งแบบ Burst), `DODGE_DISTANCE` (13 studs), `DODGE_INVULNERABLE_TIME` (0.4 วิ นับจากตอน Server ได้รับ)
+   * พุ่งหลบ (Dash / Dodge): `DODGE_COOLDOWN` (1 วิ, ความเร็วโจมตีไม่มีผล), `DODGE_DURATION` (0.36 วิ พุ่งแบบ Burst), `DODGE_DISTANCE` (13 studs), `DODGE_INVULNERABLE_TIME` (0.4 วิ นับจากตอน Server ได้รับ)
    * มานา: `BASE_MAX_MANA` (50), `MAX_MANA_PER_LEVEL` (+4/เลเวล), `MANA_REGEN_PERCENT` (ฟื้น 4% ของมานาสูงสุดต่อวิ ตลอดเวลา)
    * Energy Shield: ได้จากไอเทมเท่านั้น (เริ่มที่ 0), `ENERGY_SHIELD_RECHARGE_DELAY` (ไม่โดนตี 3 วิ ถึงเริ่มชาร์จ), `ENERGY_SHIELD_RECHARGE_PERCENT` (ชาร์จ 25% ของ ES สูงสุดต่อวิ × (1 + `EnergyShieldRecharge`%))
    * ขวดยา `FLASKS`: `Life` (3 ครั้ง, ฟื้น 40% ของเลือดสูงสุด) / `Mana` (3 ครั้ง, ฟื้น 50% ของมานาสูงสุด) ค่อยๆ ฟื้นใน `Duration` 1.5 วิ และดื่มขวดเดิมซ้ำไม่ได้จนกว่าจะจบ, `FLASK_CHARGE_PER_KILL` (+0.25 ครั้งต่อศัตรู 1 ตัวทุกขวด = ฆ่า 4 ตัวได้คืน 1 ครั้ง), `FLASK_CHARGE_PER_BOSS_KILL` (+1)
@@ -380,7 +402,19 @@
 
 ---
 
-## 3. สิ่งที่โค้ดต้องการจากแมพ (คนแต่งแมพต้องอ่าน)
+## 3. กฎแยกงาน (แมพ = Studio / โค้ด = VS Code + GitHub) & สิ่งที่โค้ดต้องการจากแมพ
+
+### 3.1 แยกงานกันไม่ให้ทับกัน
+* **🗺️ แมพ → แก้ใน Roblox Studio (อยู่ใน Team Create, ไม่ขึ้น GitHub):**
+  * ทุกอย่างใน `Workspace` (`Enemies/TrainingDummy`, ด่านและประตูวาร์ป `DungeonMap`, จุดเกิดศัตรู `EnemySpawns`, พื้น, Terrain, ของตกแต่ง ฯลฯ)
+  * `StarterPlayer > StarterCharacter` (หุ่น R15 + เส้นขอบ `CelShadeOutline`)
+  * `Lighting`, `SoundService`, `Teams`
+* **💻 โค้ด → แก้ใน VS Code (โฟลเดอร์ `src/`) แล้ว push ขึ้น GitHub:**
+  * ทุกสคริปต์ใน `ReplicatedStorage > Modules`, `ServerScriptService`, `ServerStorage > Modules`, `StarterPlayer > StarterPlayerScripts` และ `ReplicatedStorage > Remotes`
+  * ⚠️ **ห้ามแก้สคริปต์เหล่านี้ใน Studio โดยตรง** เพราะจะถูก Rojo เขียนทับทันทีที่มีคนกด Connect (ลบใน Studio → Rojo สร้างกลับมา, เปลี่ยนชื่อใน Studio → ได้ไฟล์ซ้ำ 2 ตัว)
+  * สร้างสคริปต์ใหม่: สร้างเป็นไฟล์ใน `src/` เสมอ (`.server.luau` สำหรับ ServerScriptService, `.client.luau` สำหรับ StarterPlayerScripts, `.luau` สำหรับ ModuleScript)
+
+### 3.2 สิ่งที่โค้ดต้องการจากแมพ (คนแต่งแมพต้องอ่าน)
 
 * **`Workspace.Enemies`**: โฟลเดอร์ศัตรู (ถ้าไม่มี โค้ดสร้างให้) — Model ที่มี Humanoid + HumanoidRootPart ข้างในจะมีแถบเลือดและโดนตีได้
 * **`Workspace.DungeonMap`**: โฟลเดอร์เก็บโครงสร้างโซนปลอดภัย (Lobby), กำแพงด่าน, จุดเริ่มด่าน (`DungeonEntranceSpawn`) และประตูวาร์ป (`LobbyDungeonPortal` สำหรับรีเซ็ตด่าน+เข้าด่าน, `DungeonReturnPortal` สำหรับกลับ Lobby)
@@ -493,3 +527,39 @@ sequenceDiagram
 * บอสโดนแช่แข็งตอนง้างทุบ = ทุบไม่ลง แต่วงแดง + คลื่นกระแทกบน Client ยังเล่นจนจบ (Client ไม่รู้ว่าถูกยกเลิก)
 * ค่าต้านทานในหน้าต่างกระเป๋าโชว์ค่ารวมจริง เกิน 75% ได้ แต่ตอนคำนวณใช้แค่ 75%
 * แถบสกิลยังไม่บอกว่าใส่รูนอะไรไว้ (ดูได้ในหน้าต่างกระเป๋าเท่านั้น)
+
+---
+
+## 6. มาตรฐานวิศวกรรม, การทดสอบอัตโนมัติ (Unit Tests) และ CI/CD
+
+โปรเจกต์นี้ใช้เอกสาร [`ARCHITECTURE.md`](ARCHITECTURE.md) ไฟล์นี้เป็น **Single Source of Truth** เพียงไฟล์เดียวสำหรับโครงสร้างเกมทั้งหมด ส่วนประวัติการแก้ไข (Changelog) จะถูกบันทึกอัตโนมัติผ่าน **Git Commit History (Conventional Commits)** และ **Pull Requests** บน GitHub
+
+### 6.1 เครื่องมือมาตรฐาน (Toolchain — `rokit.toml`)
+จัดการเวอร์ชันเครื่องมือให้ตรงกันทั้งทีมและบน GitHub Actions ด้วย **Rokit**:
+* **Rojo `7.7.1`**: ซิงก์โค้ดจากโฟลเดอร์ `src/` เข้าสู่ Roblox Studio (`default.project.json`)
+* **StyLua `2.6.0`**: จัดรูปแบบโค้ด Luau อัตโนมัติ (`stylua.toml`)
+* **Selene `0.32.0`**: ตรวจสอบความถูกต้องของโค้ด Luau และหาบั๊กเบื้องต้น (`selene.toml` + `roblox.yml`)
+* **Lune `0.11.1`**: รันชุดทดสอบ Unit Tests ของระบบคำนวณเกมนอก Roblox Studio โดยตรง
+
+### 6.2 ระบบตรวจสอบอัตโนมัติก่อน Commit & Push (`.githooks/`)
+เปิดใช้งานด้วยคำสั่ง `git config core.hooksPath .githooks` (ตั้งค่าครั้งเดียวต่อเครื่อง):
+* **`.githooks/commit-msg`**: บังคับใช้ **Conventional Commits** เช่น `feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `test: ...`, `style: ...`, `chore: ...`
+* **`.githooks/pre-push`**:
+  1. ป้องกันการ Push ขึ้น `main` โดยตรง (ต้องสร้าง Branch แยกแล้วเปิด Pull Request)
+  2. บังคับชื่อ Branch ให้ขึ้นต้นด้วย `feat/`, `fix/`, `refactor/`, `test/`, `docs/`, `style/` หรือ `chore/`
+  3. รันชุดทดสอบ `lune run tests/runner.luau` อัตโนมัติ — ถ้ามีเทสไม่ผ่านแม้แต่ข้อเดียวจะไม่อนุญาตให้ Push
+
+### 6.3 ชุดทดสอบอัตโนมัติ (Unit Tests — `tests/`)
+รันด้วยคำสั่ง `lune run tests/runner.luau` (ทั้งหมด **24 ชุดทดสอบ** ครอบคลุมระบบคำนวณหลัก 100%):
+1. **`tests/test_player_stats.luau` (6 tests)**: ทดสอบสูตร `expToNext`, สเตตัสพื้นฐานตามเลเวล, โบนัสจากอุปกรณ์และผังพาสซีฟ, กฎอาวุธถือเดี่ยว `AllowOffHand = false` ที่ไม่นับสเตตัส `OffHand`, และสูตรลดคูลดาวน์สกิลจาก `AttackSpeed`
+2. **`tests/test_tablet_data.luau` (3 tests)**: ทดสอบการคำนวณตัวคูณความยากและของดรอปของแผ่นศิลา (`TabletData.getEffects`), ม็อดความยากและธาตุโจมตีศัตรู, และข้อความสรุป `TabletData.describe`
+3. **`tests/test_item_data.luau` (6 tests)**: ทดสอบการแยกประเภทอุปกรณ์/แผ่นศิลา/รูนสลักหิน, การรวมสเตตัส Implicit + Affix (`ItemData.getStats`), การสร้างชื่อไอเทมตามความหายาก, และการดึงตาราง Affix
+4. **`tests/test_crafting_and_loot.luau` (9 tests)**: ทดสอบกฎหินคราฟต์ทั้ง 3 ชนิด (`Ascension`, `Carving`, `Shifting`), การตรวจช่องว่าง Prefix/Suffix (`StoneData.hasAffixRoom`), การสุ่มไอเทม/รูน/แผ่นศิลาใน `Loot` (ผ่าน Roblox API Mock สำหรับรันบน Lune), และกฎการลงแต้มผังพาสซีฟ (`PassiveData.whyNot`, `PassiveData.sanitize`)
+
+### 6.4 GitHub Actions CI (`.github/workflows/ci.yml`)
+ทำงานอัตโนมัติทุกครั้งที่มีการ Push หรือเปิด Pull Request เข้าสู่ `main`:
+1. ติดตั้ง Rokit และเครื่องมือตาม `rokit.toml`
+2. ตรวจสอบ Linter ด้วย `selene src`
+3. ตรวจสอบการจัดรูปแบบโค้ดด้วย `stylua --check tests`
+4. รัน Unit Tests ทั้งหมดด้วย `lune run tests/runner.luau`
+5. ทดสอบประกอบไฟล์เกมด้วย `rojo build default.project.json -o build.rbxl`
