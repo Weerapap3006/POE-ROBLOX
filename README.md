@@ -81,6 +81,32 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 - **Luau Language Server** (`JohnnyMorganz.luau-lsp`) ช่วยเติมโค้ดและเตือน error ของ Luau
 
+### 7. ติดตั้ง Toolchain และเปิดใช้งาน Git Hooks (มาตรฐานใหม่)
+
+โปรเจกต์นี้มีระบบตรวจสอบ Branch, Commit และ Unit Test อัตโนมัติ เพื่อไม่ให้โค้ดทับกันพัง
+
+1. **ติดตั้ง Rokit (Toolchain Manager):**
+   ```powershell
+   winget install --id Rojo.Rokit -e --accept-source-agreements --accept-package-agreements
+   ```
+   ปิด PowerShell แล้วเปิดใหม่ จากนั้นรันคำสั่งนี้ในโฟลเดอร์โปรเจกต์เพื่อติดตั้งเครื่องมือทั้งหมด (Rojo 7.7.1, StyLua, Selene, Lune):
+   ```powershell
+   rokit install
+   ```
+
+2. **เปิดใช้งานระบบตรวจสอบ Git Hooks บนเครื่อง:**
+   ```powershell
+   git config core.hooksPath .githooks
+   ```
+
+3. **มาตรฐานการทำงานใหม่:**
+   - **ชื่อ Branch:** ต้องขึ้นต้นด้วยประเภทงาน เช่น `feat/inventory`, `fix/walk-anim`, `test/loot`
+   - **ข้อความ Commit:** ใช้ Conventional Commits เช่น `feat: add ...`, `fix: ...`, `test: ...`
+   - **รัน Unit Test ในเครื่อง:**
+     ```powershell
+     lune run tests/runner.luau
+     ```
+
 ---
 
 ## ทุกครั้งที่ทำงาน
