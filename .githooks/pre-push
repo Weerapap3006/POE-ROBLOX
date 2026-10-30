@@ -1,0 +1,48 @@
+#!/bin/sh
+# Hook to validate branch naming conventions and run unit tests before pushing
+
+current_branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+if [ -z "$current_branch" ]; then
+    exit 0
+fi
+
+# Block direct push to main / master
+if [ "$current_branch" = "main" ] || [ "$current_branch" = "master" ]; then
+    echo ""
+    echo "❌ [GIT ERROR] ไม่อนุญาตให้ push ตรงเข้า branch '$current_branch'!"
+    echo "💡 กรุณาสร้าง Feature Branch ใหม่ แล้วส่งงานผ่าน Pull Request (PR):"
+    echo "   git checkout -b feat/your-feature-name"
+    echo ""
+    exit 1
+fi
+
+# Allowed branch patterns
+pattern="^(feat|fix|refactor|test|docs|style|chore)\/[a-zA-Z0-9_\-]+$"
+
+if ! echo "$current_branch" | grep -qE "$pattern"; then
+    echo ""
+    echo "❌ [GIT ERROR] ชื่อ Branch '$current_branch' ไม่ถูกต้องตามมาตรฐาน!"
+    echo ""
+    echo "💡 กรุณาตั้งชื่อ branch ให้ขึ้นต้นด้วยประเภทของงาน:"
+    echo "   - feat/<ชื่อฟีเจอร์>      เช่น feat/inventory-filter"
+    echo "   - fix/<ชื่อบั๊ก>           เช่น fix/walk-animation"
+    echo "   - refactor/<สิ่งที่ปรับ>  เช่น refactor/damage-calc"
+    echo "   - test/<ส่วนที่เทส>       เช่น test/player-stats"
+    echo "   - docs/<เอกสาร>           เช่น docs/update-readme"
+    echo ""
+    exit 1
+fi
+
+# Run unit tests if Lune is available
+if command -v lune >/dev/null 2>&1; then
+    echo "🧪 Running automated tests before push..."
+    if ! lune run tests/runner.luau; then
+        echo ""
+        echo "❌ [TEST FAILED] Unit tests ไม่ผ่าน! การ Push ถูกยกเลิกเพื่อป้องกันโค้ดพัง"
+        echo ""
+        exit 1
+    fi
+fi
+
+exit 0
