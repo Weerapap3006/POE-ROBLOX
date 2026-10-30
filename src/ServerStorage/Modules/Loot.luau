@@ -7,6 +7,7 @@ local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ItemData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ItemData"))
+local RuneData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("RuneData"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
 
 -- ==========================================
@@ -20,6 +21,7 @@ export type DropTable = {
 	Rolls: number,
 	Chance: number,
 	RarityWeights: { [string]: number },
+	RuneChance: number?,
 }
 
 local Loot = {}
@@ -65,8 +67,10 @@ end
 -- ==========================================
 function Loot.rollItem(rarity: string): ItemData.Item
 	local baseIds = {}
-	for baseId in pairs(ItemData.Bases) do
-		table.insert(baseIds, baseId)
+	for baseId, base in pairs(ItemData.Bases) do
+		if base.Slot ~= "Rune" then -- Runes drop on their own (rollRune)
+			table.insert(baseIds, baseId)
+		end
 	end
 	table.sort(baseIds)
 	local baseId = baseIds[random:NextInteger(1, #baseIds)]
@@ -109,6 +113,21 @@ function Loot.rollItem(rarity: string): ItemData.Item
 		Base = baseId,
 		Rarity = rarity,
 		Affixes = affixes,
+	}
+end
+
+-- A random stone rune (every rune equally likely)
+function Loot.rollRune(): ItemData.Item
+	local runeIds = {}
+	for runeId in pairs(RuneData.Runes) do
+		table.insert(runeIds, runeId)
+	end
+	table.sort(runeIds)
+	return {
+		Id = HttpService:GenerateGUID(false),
+		Base = RuneData.getBaseId(runeIds[random:NextInteger(1, #runeIds)]),
+		Rarity = "Rune",
+		Affixes = {},
 	}
 end
 
@@ -183,6 +202,9 @@ function Loot.rollDrops(drops: DropTable, groundPosition: Vector3)
 				Loot.dropItem(Loot.rollItem(rarity), groundPosition)
 			end
 		end
+	end
+	if drops.RuneChance and random:NextNumber() < drops.RuneChance then
+		Loot.dropItem(Loot.rollRune(), groundPosition)
 	end
 end
 

@@ -9,6 +9,7 @@ export type Skill = {
 	Name: string,
 	Cooldown: number,
 	ManaCost: number,
+	Sockets: number, -- How many stone runes fit in this skill (see RuneData)
 	MinDamage: number,
 	MaxDamage: number,
 	CritChance: number,
@@ -24,6 +25,7 @@ local SkillData: { [string]: Skill } = {
 		Name = "Slash",
 		Cooldown = 0.55, -- Seconds between attacks
 		ManaCost = 0, -- Basic attack is free, so running out of mana never leaves you without an attack
+		Sockets = 2,
 		MinDamage = 26,
 		MaxDamage = 50,
 		CritChance = 0.25, -- 25% chance
@@ -36,6 +38,7 @@ local SkillData: { [string]: Skill } = {
 		Name = "Spin Slash",
 		Cooldown = 3.0,
 		ManaCost = 15,
+		Sockets = 3,
 		MinDamage = 40,
 		MaxDamage = 70,
 		CritChance = 0.15,

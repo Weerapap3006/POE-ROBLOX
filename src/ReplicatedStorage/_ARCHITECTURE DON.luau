@@ -27,8 +27,10 @@
      │    └── TeleportRemote (RemoteEvent) : ขอวาร์ปกลับ Lobby จากหน้าตั้งค่า
      └── Modules
           ├── SkillData : ค่าสกิล Slash / Spin Slash (รวมมานาที่ใช้ ManaCost)
-          ├── EnemyData : ค่าศัตรู Stone Grunt / บอส Stone Guardian (เลือด, ท่าตี, EXP, ดรอป)
-          ├── ItemData : ไอเทม, affix (รวม ES), ความหายาก, ช่องสวมใส่ 9 ช่อง
+          ├── EnemyData : ค่าศัตรู Stone Grunt / บอส Stone Guardian (เลือด, ท่าตี + ธาตุ, EXP, ดรอป)
+          ├── Elements : ธาตุ ไฟ/น้ำแข็ง/สายฟ้า, สี, ตัวเลขสถานะผิดปกติ, ค่าต้านทานสูงสุด
+          ├── RuneData : รูนสลักหิน 6 แบบ (ชื่อ, คำอธิบาย, ใส่สกิลไหนได้, ตัวเลขผล)
+          ├── ItemData : ไอเทม, affix (รวม ES, ดาเมจธาตุ, ค่าต้านทาน), ความหายาก, ช่องสวมใส่ 9 ช่อง
           ├── PlayerStats : เลือด/มานา/ดาเมจต่อเลเวล, EXP ที่ต้องใช้, กลิ้งหลบ (DODGE_*),
           │                 มานา (MANA_*), Energy Shield (ENERGY_SHIELD_*), ขวดยา (FLASKS, FLASK_*)
           └── Ui : สี/ฟอนต์/ตัวช่วยสร้าง UI
@@ -42,6 +44,7 @@
    - ServerStorage.Modules (โมดูลฝั่ง Server)
      ├── PlayerData : เลเวล, EXP, กระเป๋า, เซฟ/โหลด DataStore
      ├── PlayerResources : มานา, Energy Shield (รับดาเมจก่อนเลือด), ขวดยาเลือด/มานา (ไม่เซฟ)
+     ├── Ailments : ติดไฟ / ช้า / แข็ง / ช็อต จากดาเมจธาตุ (ใช้ได้ทั้งศัตรูและผู้เล่น)
      ├── EnemyService : เกิดศัตรู, AI, ตาย -> EXP + ขวดยา + ดรอป, รีเซ็ตด่าน + ประตูวาร์ป (เติมทุกอย่างเต็ม)
      └── Loot : สุ่มไอเทม, วางของบนพื้นให้เก็บ
 
@@ -70,6 +73,11 @@
      (ปุ่มขวดยา + สีน้ำ/ประกาย: CombatClient FLASK_SLOTS)
    - แก้มานาเริ่มต้น / ฟื้นมานา / ES ชาร์จช้าเร็ว --> ReplicatedStorage.Modules.PlayerStats (MANA_*, ENERGY_SHIELD_*)
      (มานาที่สกิลใช้: SkillData ManaCost, ค่า affix ES: ItemData Affixes)
+   - แก้ไฟเผาแรงแค่ไหน / ช้า / แข็ง / ช็อต / ค่าต้านทานสูงสุด --> ReplicatedStorage.Modules.Elements
+     (ธาตุของท่าศัตรู: EnemyData Attack.Element, ค่า affix ธาตุ/ค่าต้านทาน: ItemData Affixes)
+   - แก้ผลของรูน / เพิ่มรูนใหม่              --> ReplicatedStorage.Modules.RuneData
+     (จำนวนช่อง: SkillData Sockets, โอกาสดรอป: EnemyData Drops.RuneChance,
+      ผลจริง: ServerScriptService.CombatServer, หน้าตา: CombatClient getSkillLook)
    - แก้สีเอฟเฟกต์ / ขนาดตัวเลขดาเมจ / ปุ่มสกิล --> StarterPlayerScripts.CombatClient
    - แก้สี UI ทั้งเกม                       --> ReplicatedStorage.Modules.Ui
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox    --> ServerScriptService.CombatServer
@@ -79,6 +87,7 @@
       เวลายืนนิ่งตอนเห็นผู้เล่นครั้งแรก: ALERT_TIME, ระดับสายตา: EYE_HEIGHT)
    - แก้ท่าเดินศัตรู / จำนวนเส้นขอบที่โชว์     --> StarterPlayerScripts.EnemyVisualsClient
    - แก้ปุ่มเปิดกระเป๋า / ช่องสวมใส่บนจอ      --> StarterPlayerScripts.InventoryClient (TOGGLE_KEY, SLOT_LAYOUT)
+     (คีย์ลัด: Shift + คลิก = สวม/ถอดทันที, ชี้แล้วกด X = ทิ้งทันที DISCARD_KEY)
    - แก้มินิแมพ / หน้าตั้งค่า / ปุ่ม M, P       --> StarterPlayerScripts.MinimapClient
    - แก้ขนาดกระเป๋า / ระบบเซฟ                --> ServerStorage.Modules.PlayerData
    - แก้สีผิวหุ่นเริ่มต้น / เส้นขอบการ์ตูน     --> StarterPlayer.StarterCharacter (แก้ใน Studio)
@@ -89,13 +98,13 @@
    - ReplicatedStorage._ARCHITECTURE DON          --> src/ReplicatedStorage/_ARCHITECTURE DON.luau
    - ReplicatedStorage._ARCHITECTURE WEE          --> src/ReplicatedStorage/_ARCHITECTURE WEE.luau
    - ReplicatedStorage.Modules.*                  --> src/ReplicatedStorage/Modules/ชื่อ.luau
-       (SkillData, EnemyData, ItemData, PlayerStats, Ui)
+       (SkillData, EnemyData, Elements, RuneData, ItemData, PlayerStats, Ui)
    - ReplicatedStorage.Remotes.*                  --> src/ReplicatedStorage/Remotes/ชื่อ.model.json
        (CombatRemote, DodgeRemote, FlaskRemote, InventoryRemote, NotifyRemote, TeleportRemote)
    - ServerScriptService.*                        --> src/ServerScriptService/ชื่อ.server.luau
        (CombatServer, EnemyServer, PlayerDataServer, PlayerResourcesServer)
    - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
-       (PlayerData, PlayerResources, EnemyService, Loot)
+       (PlayerData, PlayerResources, Ailments, EnemyService, Loot)
    - StarterPlayerScripts.*                       --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
        (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient, MinimapClient)
 
@@ -183,10 +192,51 @@
      (ศัตรูที่เพื่อนกำลังสู้จะหายแล้วเกิดใหม่หมด)
    - ศัตรูยังไม่มีท่าง้างตอนโจมตี (มีแค่ท่าเดิน), pathfinding ไม่กระโดด
    - ช่วงอมตะของการกลิ้งเริ่มตอน Server ได้รับ ไม่ใช่ตอนกด (ping สูง = โดนตีตอนเพิ่งกดได้)
+   - ยังไม่มีศัตรูที่ตีเป็นน้ำแข็ง/สายฟ้า -> affix ต้านน้ำแข็ง/สายฟ้ายังไม่มีผล (มีแค่บอสตีไฟ)
+   - บอสโดนแช่แข็งตอนง้าง = ทุบไม่ลง แต่วงแดงบน Client ยังเล่นจนจบ
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - เฟส 7 ข้อ 3: รูนสลักหิน (ระบบแต่งสกิล) [ยังไม่ได้เทสใน Studio]:
+     + RuneData (ใหม่): Reach (+40% พื้นที่), Split (ฟันเพิ่มซ้ายขวา 35°, Slash เท่านั้น),
+       Ember/Frost/Storm (กายภาพ 50% -> ไฟ/น้ำแข็ง/สายฟ้า), Detonation (ศพระเบิด 15% เลือดสูงสุด)
+     + SkillData.Sockets: Slash 2, Spin Slash 3 / ใส่รูนชนิดเดียวกันซ้ำในสกิลเดียวไม่ได้
+     + ItemData: ไอเทมรูนสร้างจาก RuneData (Slot "Rune", Rarity "Rune" สีส้ม), getRuneId
+     + EnemyData Drops.RuneChance (Grunt 10%, บอส 100%) + Loot.rollRune, rollItem ไม่สุ่มรูน
+     + PlayerData: profile.SkillRunes (เซฟลง DataStore, ล้างตอนโหลด), action Socket / Unsocket,
+       Equip รูนไม่ได้, getSkillRunes, attribute SkillRunes_<skillId>
+     + CombatServer: ผลรูนทั้ง 6 + แยก collectEnemies / explodeCorpse, ศัตรูที่ตายไปแล้วในสวิงเดียวกันข้าม
+     + CombatClient: getSkillLook (ใหญ่ขึ้น / ฟันซ้ายขวา / สีธาตุ) ใช้กับสกิลคนอื่นด้วย, CorpseExplosion
+     + InventoryClient: แถบ SKILL RUNES ล่างหน้าต่าง (หน้าต่างสูงขึ้น 70), รายละเอียดรูน,
+       ปุ่ม Auto-Socket / Remove from Skill, Shift+คลิก = ใส่/ถอดรูน
+     + ARCHITECTURE.md ทุกหัวข้อที่เกี่ยว + หัวข้อ RuneData + แถวบาลานซ์ + KNOWN ISSUES แถบสกิลยังไม่โชว์รูน
+     + Google Doc "Project poe" + Project poe.docx: งานเฟส 7 + ไอเดียรูน = กำลังทำ, ถัดไป = หินคราฟต์
+   - คีย์ลัดในกระเป๋า (InventoryClient) [ยังไม่ได้เทสใน Studio]:
+     + Shift + คลิกของในกระเป๋า = สวมใส่ทันที, Shift + คลิกช่องสวมใส่ = ถอดทันที
+     + ชี้ของในกระเป๋าแล้วกด X = ทิ้งทันทีไม่ถามยืนยัน (ของที่สวมอยู่ทิ้งด้วย X ไม่ได้)
+     + ป้ายบอกคีย์ลัดที่หัวหน้าต่าง (PC เท่านั้น)
+     + default.project.json: StarterPlayer.EnableMouseLockOption = false (ปิด Shift Lock ที่ทำเมาส์ค้างกลางจอ)
+     + ARCHITECTURE.md: คีย์ลัดใน InventoryClient + หัวข้อค่าใน default.project.json
+     + Google Doc "Project poe" + Project poe.docx: งานที่กำลังทำ + คีย์ลัดกระเป๋า
+   - เฟส 7 ข้อ 2: ธาตุ + สถานะผิดปกติ + ค่าต้านทาน [ยังไม่ได้เทสใน Studio]:
+     + Elements (ใหม่, ใช้ร่วม): ธาตุ Fire/Cold/Lightning, สี, ตัวเลข Ignite/Chill/Freeze/Shock,
+       MAX_RESISTANCE 75%, formatAilments (ป้ายสีบน UI)
+     + Ailments (ใหม่, server): ติดไฟ (เผา 100% ของดาเมจไฟใน 2 วิ), ช้า 30% 2 วิ,
+       แข็ง 1 วิ (น้ำแข็งครั้งเดียว >= 10% เลือดสูงสุด, ยกเลิกท่าที่ศัตรูง้าง), ช็อต +5-30% ดาเมจ 3 วิ
+       ใช้ได้ทั้งศัตรู/TrainingDummy/ผู้เล่น, ตั้ง attribute Ignited/Chilled/Frozen/Shocked บน Model
+     + ItemData: affix FireDamage/ColdDamage/LightningDamage (Prefix +3-12),
+       FireResistance/ColdResistance/LightningResistance (Suffix +8-25%)
+     + PlayerStats/PlayerData: สเตตัสธาตุ 6 ตัว + attribute
+     + CombatServer: ดาเมจ = กายภาพ + ธาตุ (คริคูณทั้งหมด) x ช็อต, แยก damageEnemy ใช้ทั้งตีและไฟเผา,
+       แข็ง = ใช้สกิล/กลิ้งไม่ได้
+     + EnemyData: Attack.Element (Grunt Physical, บอส Fire), EnemyService: หักค่าต้านทาน + ติดสถานะให้ผู้เล่น,
+       ศัตรูแข็ง = AI หยุด + ยกเลิกท่าที่ง้าง
+     + CombatClient: เลขดาเมจสีตามธาตุ (ไฟเผา = ส้ม), แข็ง = ตี/กลิ้งไม่ได้
+     + HudClient: ป้าย BURN/CHILL/FROZEN/SHOCK เหนือแถบเลือดศัตรู, ต่อท้ายชื่อบอส, ของเราเหนือแถบเลือด
+     + InventoryClient: สเตตัส ELE DMG + RES (สีตามธาตุ), ตัวหนังสือ 11 ให้พอ 5 บรรทัด
+     + ARCHITECTURE.md ทุกหัวข้อที่เกี่ยว + KNOWN ISSUES 2 ข้อ (ยังไม่มีศัตรูน้ำแข็ง/สายฟ้า, วงแดงบอสตอนแข็ง)
+     + Google Doc "Project poe" + Project poe.docx: งานเฟส 7 + ไอเดียข้อธาตุ = กำลังทำ, ถัดไป = รูนสลักหิน
    - เฟส 7 ต่อ: ขวดมานา + แถบมานา + Energy Shield + affix ES [ยังไม่ได้เทสใน Studio]:
      + มานา: สูงสุด 50 +4/เลเวล, ฟื้น 4%/วิ, SkillData.ManaCost (Slash ฟรี, Spin Slash 15)
        Client เช็คก่อนตี + ช่องสกิลทับสีน้ำเงินตอนมานาไม่พอ, CombatServer หักจริงหลังเช็คคูลดาวน์

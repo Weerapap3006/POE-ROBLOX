@@ -4,6 +4,9 @@
 -- ==========================================
 -- An item is plain data so it can be saved to the DataStore and sent through RemoteEvents:
 -- { Id = "GUID", Base = "IronSword", Rarity = "Magic", Affixes = { { Id = "FlatDamage", Value = 7 } } }
+-- Stone runes are items too: { Base = "RuneReach", Rarity = "Rune", Affixes = {} } (bases added from RuneData below)
+local RuneData = require(script.Parent:WaitForChild("RuneData"))
+
 export type Affix = {
 	Id: string,
 	Value: number,
@@ -18,7 +21,8 @@ export type Item = {
 
 type BaseInfo = {
 	Name: string,
-	Slot: string,
+	Slot: string, -- "Rune" = a stone rune: socketed into a skill, never equipped
+	Rune: string?, -- Rune bases: RuneData.Runes key
 	AllowOffHand: boolean?, -- For MainHand weapons: true = can equip OffHand, false = locks OffHand slot
 	Implicit: { [string]: number }, -- Stats every copy of this base always has
 }
@@ -48,6 +52,12 @@ ItemData.StatText = {
 	AttackSpeed = "+%d%% Attack Speed",
 	MaxEnergyShield = "+%d Max Energy Shield",
 	EnergyShieldRecharge = "+%d%% Energy Shield Recharge Rate",
+	FireDamage = "+%d Fire Damage",
+	ColdDamage = "+%d Cold Damage",
+	LightningDamage = "+%d Lightning Damage",
+	FireResistance = "+%d%% Fire Resistance",
+	ColdResistance = "+%d%% Cold Resistance",
+	LightningResistance = "+%d%% Lightning Resistance",
 } :: { [string]: string }
 
 -- Equipment slots in display order (9 slots supported)
@@ -78,6 +88,7 @@ ItemData.SlotNames = {
 	Special = "Special",
 	Weapon = "Main Hand",
 	Armor = "Cloth",
+	Rune = "Skill Rune",
 } :: { [string]: string }
 
 -- Check if an item's Base.Slot can be worn in a given equipment slot key
@@ -151,6 +162,17 @@ ItemData.Bases = {
 	},
 } :: { [string]: BaseInfo }
 
+-- One item base per stone rune (Loot drops them separately from gear, see EnemyData Drops.RuneChance)
+for runeId, rune in pairs(RuneData.Runes) do
+	ItemData.Bases[RuneData.getBaseId(runeId)] = { Name = rune.Name, Slot = "Rune", Rune = runeId, Implicit = {} }
+end
+
+-- Stone runes have no affixes; the item's base says which rune it is
+function ItemData.getRuneId(item: Item): string?
+	local base = ItemData.Bases[item.Base]
+	return if base then base.Rune else nil
+end
+
 -- Random modifiers rolled onto Magic / Rare items (each affix at most once per item)
 ItemData.Affixes = {
 	FlatDamage = { Kind = "Prefix", Stat = "FlatDamage", Min = 3, Max = 12 },
@@ -158,6 +180,13 @@ ItemData.Affixes = {
 	AttackSpeed = { Kind = "Suffix", Stat = "AttackSpeed", Min = 5, Max = 20 },
 	EnergyShield = { Kind = "Prefix", Stat = "MaxEnergyShield", Min = 10, Max = 35 },
 	EnergyShieldRecharge = { Kind = "Suffix", Stat = "EnergyShieldRecharge", Min = 10, Max = 40 },
+	-- Elemental damage on every hit (each element inflicts its ailment, see Elements)
+	FireDamage = { Kind = "Prefix", Stat = "FireDamage", Min = 3, Max = 12 },
+	ColdDamage = { Kind = "Prefix", Stat = "ColdDamage", Min = 3, Max = 12 },
+	LightningDamage = { Kind = "Prefix", Stat = "LightningDamage", Min = 3, Max = 12 },
+	FireResistance = { Kind = "Suffix", Stat = "FireResistance", Min = 8, Max = 25 },
+	ColdResistance = { Kind = "Suffix", Stat = "ColdResistance", Min = 8, Max = 25 },
+	LightningResistance = { Kind = "Suffix", Stat = "LightningResistance", Min = 8, Max = 25 },
 } :: { [string]: AffixInfo }
 
 -- How many affixes each rarity rolls, and how many of them may be prefixes / suffixes
@@ -185,6 +214,15 @@ ItemData.Rarities = {
 		MaxAffixes = 3,
 		MaxPrefixes = 2,
 		MaxSuffixes = 2,
+	},
+	-- Only stone runes use this (not in RarityOrder, so gear never rolls it)
+	Rune = {
+		Name = "Stone Rune",
+		Color = Color3.fromRGB(235, 150, 80),
+		MinAffixes = 0,
+		MaxAffixes = 0,
+		MaxPrefixes = 0,
+		MaxSuffixes = 0,
 	},
 } :: { [string]: RarityInfo }
 ItemData.RarityOrder = { "Normal", "Magic", "Rare" }

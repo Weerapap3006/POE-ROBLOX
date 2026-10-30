@@ -15,6 +15,8 @@ export type EnemyType = {
 	LeashRange: number, -- Gives up and walks home (healing to full) when pulled this far from its spawn
 	Attack: {
 		Kind: "Melee" | "Slam",
+		-- Fire / Cold / Lightning hits are reduced by the player's resistance and inflict ailments (see Elements)
+		Element: "Physical" | "Fire" | "Cold" | "Lightning",
 		Range: number, -- Starts the attack when the target is this close
 		Radius: number?, -- Slam only: damage circle around the enemy
 		Windup: number, -- Seconds of warning before the hit lands (time for players to dodge)
@@ -28,6 +30,7 @@ export type EnemyType = {
 		Rolls: number, -- How many times to roll for an item
 		Chance: number, -- Chance per roll to drop an item (0-1)
 		RarityWeights: { [string]: number }, -- Weight per rarity in ItemData.Rarities
+		RuneChance: number, -- Chance (0-1) to also drop one random stone rune (RuneData)
 	},
 }
 
@@ -44,6 +47,7 @@ local EnemyData: { [string]: EnemyType } = {
 		LeashRange = 70,
 		Attack = {
 			Kind = "Melee",
+			Element = "Physical",
 			Range = 4.5,
 			Windup = 0.45,
 			Cooldown = 1.6,
@@ -56,6 +60,7 @@ local EnemyData: { [string]: EnemyType } = {
 			Rolls = 1,
 			Chance = 0.4,
 			RarityWeights = { Normal = 60, Magic = 32, Rare = 8 },
+			RuneChance = 0.1,
 		},
 	},
 	Brute = {
@@ -70,6 +75,7 @@ local EnemyData: { [string]: EnemyType } = {
 		LeashRange = 90,
 		Attack = {
 			Kind = "Slam",
+			Element = "Fire", -- Burns players it hits; Fire Resistance helps
 			Range = 9,
 			Radius = 12,
 			Windup = 1.0,
@@ -83,6 +89,7 @@ local EnemyData: { [string]: EnemyType } = {
 			Rolls = 3,
 			Chance = 1,
 			RarityWeights = { Magic = 50, Rare = 50 },
+			RuneChance = 1, -- The boss always drops a rune
 		},
 	},
 }

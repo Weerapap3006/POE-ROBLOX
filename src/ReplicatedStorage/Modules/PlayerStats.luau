@@ -12,6 +12,14 @@ export type Stats = {
 	EnergyShieldRecharge: number, -- % faster energy shield recharge
 	FlatDamage: number, -- Added to every skill's damage roll
 	AttackSpeed: number, -- % faster skill cooldowns
+	-- Elemental damage added to every hit (inflicts ailments, see Elements)
+	FireDamage: number,
+	ColdDamage: number,
+	LightningDamage: number,
+	-- % less damage taken from enemy hits of that element (capped at Elements.MAX_RESISTANCE)
+	FireResistance: number,
+	ColdResistance: number,
+	LightningResistance: number,
 }
 
 local PlayerStats = {}
@@ -59,6 +67,12 @@ function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item 
 		EnergyShieldRecharge = 0,
 		FlatDamage = (level - 1) * PlayerStats.DAMAGE_PER_LEVEL,
 		AttackSpeed = 0,
+		FireDamage = 0,
+		ColdDamage = 0,
+		LightningDamage = 0,
+		FireResistance = 0,
+		ColdResistance = 0,
+		LightningResistance = 0,
 	}
 	for _, item in pairs(equipped) do
 		for stat, value in pairs(ItemData.getStats(item)) do

@@ -21,6 +21,8 @@ local flaskRemote = remotesFolder:WaitForChild("FlaskRemote") :: RemoteEvent
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local SkillData = require(modulesFolder:WaitForChild("SkillData"))
 local PlayerStats = require(modulesFolder:WaitForChild("PlayerStats"))
+local Elements = require(modulesFolder:WaitForChild("Elements"))
+local RuneData = require(modulesFolder:WaitForChild("RuneData"))
 local Ui = require(modulesFolder:WaitForChild("Ui"))
 
 -- ==========================================
@@ -316,8 +318,33 @@ local function getGroundBelow(character: Model, rootPart: BasePart): Vector3
 	return rootPart.Position - Vector3.new(0, hipHeight + rootPart.Size.Y / 2, 0)
 end
 
+-- How stone runes change a skill's look (same rules as CombatServer): Reach = bigger, Split = side slashes,
+-- Ember / Frost / Storm = that element's color. Read from the owner's "SkillRunes_<skillId>" attribute
+type SkillLook = { Color: Color3, Scale: number, Split: boolean }
+
+local function getSkillLook(character: Model, skillId: string): SkillLook
+	local owner = Players:GetPlayerFromCharacter(character)
+	local runes = RuneData.parse(if owner then owner:GetAttribute("SkillRunes_" .. skillId) else nil)
+	local color = SLASH_COLOR
+	for _, element in ipairs(Elements.Types) do
+		for runeId in pairs(runes) do
+			if RuneData.Runes[runeId].Convert == element then
+				color = Elements.Colors[element]
+			end
+		end
+		if color ~= SLASH_COLOR then
+			break -- First element in Elements.Types order wins when several are converted
+		end
+	end
+	return {
+		Color = color,
+		Scale = if runes.Reach then RuneData.AREA_MULTIPLIER else 1,
+		Split = runes.Split == true,
+	}
+end
+
 -- BasicSlash: arm swing + waist twist, alternating left/right each combo step
-local function playSlashVFX(character: Model, aimPoint: Vector3, currentCombo: number)
+local function playSlashVFX(character: Model, aimPoint: Vector3, currentCombo: number, look: SkillLook)
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not rootPart then
 		return
@@ -336,11 +363,17 @@ local function playSlashVFX(character: Model, aimPoint: Vector3, currentCombo: n
 		flatAim = rootPart.Position + rootPart.CFrame.LookVector
 	end
 	local tiltAngle = if currentCombo == 1 then math.rad(15) else math.rad(-15)
-	spawnCrescent(CFrame.lookAt(rootPart.Position, flatAim), tiltAngle, SLASH_COLOR, 1)
+	local lookCF = CFrame.lookAt(rootPart.Position, flatAim)
+	spawnCrescent(lookCF, tiltAngle, look.Color, look.Scale)
+	if look.Split then
+		for _, side in ipairs({ 1, -1 }) do
+			spawnCrescent(lookCF * CFrame.Angles(0, math.rad(RuneData.SPLIT_ANGLE * side), 0), tiltAngle, look.Color, look.Scale)
+		end
+	end
 end
 
 -- SpinSlash: upper body whirls around while a ring wave expands to the skill radius
-local function playSpinVFX(character: Model, radius: number)
+local function playSpinVFX(character: Model, radius: number, look: SkillLook)
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not rootPart then
 		return
@@ -350,10 +383,11 @@ local function playSpinVFX(character: Model, radius: number)
 	startSwing(waist, CFrame.Angles(0, math.rad(170), 0))
 	startSwing(rightShoulder, CFrame.Angles(math.rad(90), 0, 0))
 
-	local ring = makeDisc(getGroundBelow(character, rootPart) + Vector3.new(0, 0.6, 0), 2, SLASH_COLOR, 0.2)
+	local ring = makeDisc(getGroundBelow(character, rootPart) + Vector3.new(0, 0.6, 0), 2, look.Color, 0.2)
 	ring.Name = "SpinSlashVFX"
+	local diameter = radius * look.Scale * 2
 	TweenService:Create(ring, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Size = Vector3.new(0.2, radius * 2, radius * 2),
+		Size = Vector3.new(0.2, diameter, diameter),
 		Transparency = 1,
 	}):Play()
 	Debris:AddItem(ring, 0.3)
@@ -364,17 +398,30 @@ local function playSkillVFX(character: Model, skillId: string, aimPoint: Vector3
 	if not skill then
 		return
 	end
+	local look = getSkillLook(character, skillId)
 	if skill.Shape == "Radius" then
-		playSpinVFX(character, skill.Radius or 10)
+		playSpinVFX(character, skill.Radius or 10, look)
 	else
-		playSlashVFX(character, aimPoint, step)
+		playSlashVFX(character, aimPoint, step, look)
 	end
+end
+
+-- Detonation rune: a corpse bursts into a fiery ring
+local function playCorpseExplosion(center: Vector3, radius: number)
+	local burst = makeDisc(center, 2, Elements.Colors.Fire, 0.15)
+	burst.Name = "CorpseExplosionVFX"
+	TweenService:Create(burst, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.2, radius * 2, radius * 2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(burst, 0.35)
 end
 
 -- ==========================================
 -- 3. FLOATING DAMAGE NUMBERS & HIT FLASH
 -- ==========================================
-local function showHitFeedback(targetModel: Model, damage: number, isCrit: boolean)
+-- element = "Fire" / "Cold" / "Lightning" for elemental hits and burns, nil for normal hits
+local function showHitFeedback(targetModel: Model, damage: number, isCrit: boolean, element: string?)
 	local rootPart = targetModel:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not rootPart then
 		return
@@ -407,7 +454,7 @@ local function showHitFeedback(targetModel: Model, damage: number, isCrit: boole
 	billboard.Adornee = attachment
 	billboard.Parent = attachment
 
-	-- Players taking damage get red numbers, enemies white (gold on crit)
+	-- Players taking damage get red numbers; enemies: element color (burns), gold on crit, otherwise white
 	local isPlayerHurt = Players:GetPlayerFromCharacter(targetModel) ~= nil
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
@@ -417,6 +464,7 @@ local function showHitFeedback(targetModel: Model, damage: number, isCrit: boole
 	label.Text = if isCrit then tostring(damage) .. "!" else tostring(damage)
 	label.TextColor3 = if isPlayerHurt
 		then PLAYER_HURT_COLOR
+		elseif element and Elements.Colors[element] then Elements.Colors[element]
 		elseif isCrit then Color3.fromRGB(255, 215, 45)
 		else Color3.fromRGB(255, 255, 255)
 	label.TextStrokeColor3 = Color3.fromRGB(15, 15, 20)
@@ -547,9 +595,9 @@ local function useSkill(skillId: string)
 		return
 	end
 
-	-- No attacking mid-roll (held buttons pick up again once it ends)
+	-- No attacking mid-roll or while frozen (held buttons pick up again once it ends)
 	local now = os.clock()
-	if now < dodgeEndTime then
+	if now < dodgeEndTime or character:GetAttribute("Frozen") then
 		return
 	end
 
@@ -684,7 +732,8 @@ local function dodge()
 
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not humanoid or not rootPart or humanoid.Health <= 0 then
+	-- Frozen (an enemy's cold hit): can't roll out of it
+	if not humanoid or not rootPart or humanoid.Health <= 0 or character:GetAttribute("Frozen") then
 		return
 	end
 
@@ -963,9 +1012,9 @@ end)
 
 combatRemote.OnClientEvent:Connect(function(action: string, ...)
 	if action == "DamageDealt" then
-		local targetModel: Model, damage: number, isCrit: boolean = ...
+		local targetModel: Model, damage: number, isCrit: boolean, element: string? = ...
 		if targetModel then
-			showHitFeedback(targetModel, damage, isCrit)
+			showHitFeedback(targetModel, damage, isCrit, element)
 		end
 	elseif action == "ReplicateSkill" then
 		local attackerChar: Model, skillId: string, aimPoint: Vector3, step: number = ...
@@ -982,5 +1031,8 @@ combatRemote.OnClientEvent:Connect(function(action: string, ...)
 		if enemyModel then
 			playEnemyAlert(enemyModel, duration)
 		end
+	elseif action == "CorpseExplosion" then
+		local center: Vector3, radius: number = ...
+		playCorpseExplosion(center, radius)
 	end
 end)
