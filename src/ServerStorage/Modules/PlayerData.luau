@@ -14,6 +14,7 @@ local SkillData = require(modulesFolder:WaitForChild("SkillData"))
 local RuneData = require(modulesFolder:WaitForChild("RuneData"))
 local StoneData = require(modulesFolder:WaitForChild("StoneData"))
 local TabletData = require(modulesFolder:WaitForChild("TabletData"))
+local PassiveData = require(modulesFolder:WaitForChild("PassiveData"))
 
 local Crafting = require(script.Parent:WaitForChild("Crafting"))
 local DungeonRun = require(script.Parent:WaitForChild("DungeonRun"))
@@ -42,6 +43,8 @@ export type Profile = {
 	Equipped: { [string]: ItemData.Item },
 	SkillRunes: { [string]: { ItemData.Item } }, -- Stone runes socketed in each skill (in socket order, no gaps)
 	Stones: { [string]: number }, -- Crafting stones owned, per StoneData id
+	Class: string?, -- PassiveData.Classes id (nil = not chosen yet, the tree window asks)
+	Passives: { string }, -- Allocated passive tree nodes (not counting the class's free Start node)
 	Stats: PlayerStats.Stats,
 	-- False when loading failed: saving would overwrite the player's real data with this empty profile
 	CanSave: boolean,
@@ -168,6 +171,8 @@ local function buildProfile(data: any, canSave: boolean): Profile
 		Equipped = {},
 		SkillRunes = sanitizeSkillRunes(nil),
 		Stones = sanitizeStones(nil),
+		Class = nil,
+		Passives = {},
 		Stats = PlayerStats.compute(1, {}),
 		CanSave = canSave,
 	}
@@ -182,6 +187,11 @@ local function buildProfile(data: any, canSave: boolean): Profile
 	end
 	if type(data.Exp) == "number" then
 		profile.Exp = math.max(0, math.floor(data.Exp))
+	end
+	-- Passive tree: needs the level above (it decides how many points there are)
+	if type(data.Class) == "string" and PassiveData.Classes[data.Class] then
+		profile.Class = data.Class
+		profile.Passives = PassiveData.sanitize(data.Class, data.Passives, PassiveData.getPoints(profile.Level))
 	end
 	if type(data.Inventory) == "table" then
 		for _, raw in ipairs(data.Inventory) do
@@ -232,6 +242,8 @@ local function saveProfile(player: Player, profile: Profile): boolean
 		Equipped = profile.Equipped,
 		SkillRunes = profile.SkillRunes,
 		Stones = profile.Stones,
+		Class = profile.Class,
+		Passives = profile.Passives,
 	}
 
 	pendingSaves += 1
@@ -269,7 +281,7 @@ local function applyToCharacter(player: Player, profile: Profile, healToFull: bo
 end
 
 local function refreshStats(player: Player, profile: Profile, healToFull: boolean)
-	profile.Stats = PlayerStats.compute(profile.Level, profile.Equipped)
+	profile.Stats = PlayerStats.compute(profile.Level, profile.Equipped, PassiveData.getStats(profile.Class, profile.Passives))
 
 	-- Attributes replicate to every client automatically: HudClient / InventoryClient / CombatClient read these
 	player:SetAttribute("Level", profile.Level)
@@ -297,6 +309,8 @@ local function sync(player: Player, profile: Profile)
 		Equipped = profile.Equipped,
 		SkillRunes = profile.SkillRunes,
 		Stones = profile.Stones,
+		Class = profile.Class, -- Passive tree (PassiveTreeClient listens to this Sync too)
+		Passives = profile.Passives,
 		Capacity = INVENTORY_CAPACITY,
 	})
 
@@ -514,6 +528,31 @@ local function placeTablet(player: Player, profile: Profile, itemId: string)
 	PlayerData.notify(nil, ("%s placed a Stone Tablet in the portal (%s)"):format(player.DisplayName, TabletData.describe(effects)), INFO_COLOR)
 end
 
+-- Picking (or changing) a class starts the tree over from that class's Start node. Free for now (testing)
+local function chooseClass(player: Player, profile: Profile, classId: string)
+	local class = PassiveData.Classes[classId]
+	if not class then
+		return
+	end
+	profile.Class = classId
+	profile.Passives = {}
+	PlayerData.notify(player, "You are now a " .. class.Name, class.Color)
+end
+
+-- One point into a node that links to the tree you already have (PassiveData.whyNot, same as the window)
+local function allocatePassive(player: Player, profile: Profile, nodeId: string)
+	local reason = PassiveData.whyNot(profile.Class, profile.Passives, nodeId)
+	if reason then
+		PlayerData.notify(player, reason, WARNING_COLOR)
+		return
+	end
+	if #profile.Passives >= PassiveData.getPoints(profile.Level) then
+		PlayerData.notify(player, "No passive points left (you get one every level)", WARNING_COLOR)
+		return
+	end
+	table.insert(profile.Passives, nodeId)
+end
+
 local function onInventoryRequest(player: Player, action: any, arg: any, arg2: any)
 	local profile = profiles[player]
 	if not profile then
@@ -534,6 +573,12 @@ local function onInventoryRequest(player: Player, action: any, arg: any, arg2: a
 		craft(player, profile, arg, arg2)
 	elseif action == "PlaceTablet" and type(arg) == "string" then
 		placeTablet(player, profile, arg)
+	elseif action == "ChooseClass" and type(arg) == "string" then
+		chooseClass(player, profile, arg)
+	elseif action == "AllocatePassive" and type(arg) == "string" then
+		allocatePassive(player, profile, arg)
+	elseif action == "ResetPassives" then
+		table.clear(profile.Passives) -- Free respec for now (testing)
 	elseif action ~= "RequestSync" then
 		return
 	end
@@ -593,7 +638,7 @@ function PlayerData.addExp(player: Player, amount: number)
 	-- Leveling up also heals to full
 	refreshStats(player, profile, leveledUp)
 	if leveledUp then
-		PlayerData.notify(player, ("Level Up! Lv %d"):format(profile.Level), LEVEL_UP_COLOR)
+		PlayerData.notify(player, ("Level Up! Lv %d (+Passive Point)"):format(profile.Level), LEVEL_UP_COLOR)
 	end
 end
 
