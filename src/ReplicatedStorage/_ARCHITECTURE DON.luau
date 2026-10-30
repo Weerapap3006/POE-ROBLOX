@@ -30,6 +30,8 @@
           ├── EnemyData : ค่าศัตรู Stone Grunt / บอส Stone Guardian (เลือด, ท่าตี + ธาตุ, EXP, ดรอป)
           ├── Elements : ธาตุ ไฟ/น้ำแข็ง/สายฟ้า, สี, ตัวเลขสถานะผิดปกติ, ค่าต้านทานสูงสุด
           ├── RuneData : รูนสลักหิน 6 แบบ (ชื่อ, คำอธิบาย, ใส่สกิลไหนได้, ตัวเลขผล)
+          ├── StoneData : หินคราฟต์ 3 แบบ (Ascension / Carving / Shifting)
+          ├── TabletData : แผ่นศิลา (ม็อด, ผลต่อ Tier, สูตรผลของรอบ)
           ├── ItemData : ไอเทม, affix (รวม ES, ดาเมจธาตุ, ค่าต้านทาน), ความหายาก, ช่องสวมใส่ 9 ช่อง
           ├── PlayerStats : เลือด/มานา/ดาเมจต่อเลเวล, EXP ที่ต้องใช้, กลิ้งหลบ (DODGE_*),
           │                 มานา (MANA_*), Energy Shield (ENERGY_SHIELD_*), ขวดยา (FLASKS, FLASK_*)
@@ -45,6 +47,8 @@
      ├── PlayerData : เลเวล, EXP, กระเป๋า, เซฟ/โหลด DataStore
      ├── PlayerResources : มานา, Energy Shield (รับดาเมจก่อนเลือด), ขวดยาเลือด/มานา (ไม่เซฟ)
      ├── Ailments : ติดไฟ / ช้า / แข็ง / ช็อต จากดาเมจธาตุ (ใช้ได้ทั้งศัตรูและผู้เล่น)
+     ├── Crafting : สุ่ม affix (ดรอป + คราฟต์) และกฎหินคราฟต์
+     ├── DungeonRun : แผ่นศิลาที่รออยู่ในประตู + ผลของรอบที่กำลังเล่น
      ├── EnemyService : เกิดศัตรู, AI, ตาย -> EXP + ขวดยา + ดรอป, รีเซ็ตด่าน + ประตูวาร์ป (เติมทุกอย่างเต็ม)
      └── Loot : สุ่มไอเทม, วางของบนพื้นให้เก็บ
 
@@ -78,6 +82,10 @@
    - แก้ผลของรูน / เพิ่มรูนใหม่              --> ReplicatedStorage.Modules.RuneData
      (จำนวนช่อง: SkillData Sockets, โอกาสดรอป: EnemyData Drops.RuneChance,
       ผลจริง: ServerScriptService.CombatServer, หน้าตา: CombatClient getSkillLook)
+   - แก้หินคราฟต์ (ชื่อ / โอกาสดรอปแต่ละแบบ)  --> ReplicatedStorage.Modules.StoneData
+     (กฎว่าหินทำอะไร: ServerStorage.Modules.Crafting useStone, โอกาสดรอป: EnemyData Drops.StoneChance)
+   - แก้แผ่นศิลา (ม็อด / ผลต่อ Tier / Tier สูงสุด) --> ReplicatedStorage.Modules.TabletData
+     (โอกาสดรอป: EnemyData Drops.TabletChance, ป้ายประตู: EnemyService setupDungeonPortals)
    - แก้สีเอฟเฟกต์ / ขนาดตัวเลขดาเมจ / ปุ่มสกิล --> StarterPlayerScripts.CombatClient
    - แก้สี UI ทั้งเกม                       --> ReplicatedStorage.Modules.Ui
    - แก้สูตรคำนวณดาเมจ / ระบบเช็ค Hitbox    --> ServerScriptService.CombatServer
@@ -98,13 +106,13 @@
    - ReplicatedStorage._ARCHITECTURE DON          --> src/ReplicatedStorage/_ARCHITECTURE DON.luau
    - ReplicatedStorage._ARCHITECTURE WEE          --> src/ReplicatedStorage/_ARCHITECTURE WEE.luau
    - ReplicatedStorage.Modules.*                  --> src/ReplicatedStorage/Modules/ชื่อ.luau
-       (SkillData, EnemyData, Elements, RuneData, ItemData, PlayerStats, Ui)
+       (SkillData, EnemyData, Elements, RuneData, StoneData, TabletData, ItemData, PlayerStats, Ui)
    - ReplicatedStorage.Remotes.*                  --> src/ReplicatedStorage/Remotes/ชื่อ.model.json
        (CombatRemote, DodgeRemote, FlaskRemote, InventoryRemote, NotifyRemote, TeleportRemote)
    - ServerScriptService.*                        --> src/ServerScriptService/ชื่อ.server.luau
        (CombatServer, EnemyServer, PlayerDataServer, PlayerResourcesServer)
    - ServerStorage.Modules.*                      --> src/ServerStorage/Modules/ชื่อ.luau
-       (PlayerData, PlayerResources, Ailments, EnemyService, Loot)
+       (PlayerData, PlayerResources, Ailments, Crafting, DungeonRun, EnemyService, Loot)
    - StarterPlayerScripts.*                       --> src/StarterPlayer/StarterPlayerScripts/ชื่อ.client.luau
        (CameraScript, CombatClient, HudClient, InventoryClient, EnemyVisualsClient, MinimapClient)
 
@@ -192,12 +200,41 @@
      (ศัตรูที่เพื่อนกำลังสู้จะหายแล้วเกิดใหม่หมด)
    - ศัตรูยังไม่มีท่าง้างตอนโจมตี (มีแค่ท่าเดิน), pathfinding ไม่กระโดด
    - ช่วงอมตะของการกลิ้งเริ่มตอน Server ได้รับ ไม่ใช่ตอนกด (ping สูง = โดนตีตอนเพิ่งกดได้)
-   - ยังไม่มีศัตรูที่ตีเป็นน้ำแข็ง/สายฟ้า -> affix ต้านน้ำแข็ง/สายฟ้ายังไม่มีผล (มีแค่บอสตีไฟ)
+   - ศัตรูตีเป็นน้ำแข็ง/สายฟ้าเฉพาะรอบแผ่นศิลาที่มีม็อด Frost/Storm (ด่านปกติ affix ต้าน 2 ธาตุนี้ยังไม่มีผล)
+   - ใครเข้าประตูระหว่างรอบแผ่นศิลา = เริ่มรอบใหม่ทันที รอบเดิมหาย
+   - แผ่นศิลาที่ใส่ประตูแล้วเอาคืนไม่ได้ และหายถ้าเซิร์ฟเวอร์ปิดก่อนมีคนเข้าประตู
    - บอสโดนแช่แข็งตอนง้าง = ทุบไม่ลง แต่วงแดงบน Client ยังเล่นจนจบ
 
 ------------------------------------------------------------------------------
 6. บันทึกการแก้ไข (CHANGELOG) - ใหม่สุดอยู่บน:
    [2026-10-30]
+   - แก้จากเทส: ไม่รู้ว่าของชิ้นไหนเพิ่ม affix ได้:
+     + InventoryClient: จุด affix ใต้ชื่อของ (ทึบ = มี, กลวง = ว่าง) ทั้งในตารางและช่องสวมใส่,
+       ชี้เมาส์ที่ช่องหิน = ของที่หินนั้นใช้ได้เรือง (มือถือ: แตะหินตอนไม่ได้เลือกของ = ปักไว้),
+       รายละเอียดของบอก "Affixes x/y: room for more / full", ช่องหินเรืองเฉพาะหินที่ใช้กับของที่เลือกได้
+     + StoneData: whyNot / hasAffixRoom (กฎใช้หินย้ายมาไว้ที่ใช้ร่วม), Crafting.useStone ใช้ whyNot
+     + ARCHITECTURE.md: InventoryClient, StoneData, Crafting
+   - แก้จากเทส: หินคราฟต์ดูเหมือนไม่ขึ้นในกระเป๋า (จริงๆ นับอยู่ แต่โชว์แค่ตอนเลือกของ)
+     + InventoryClient: ย้ายปุ่มหินจากแผงรายละเอียดมาเป็นช่อง "CRAFTING STONES" ใต้ตารางของ โชว์ตลอด
+       (ชื่อ / จำนวน / ทำอะไร, เรืองตอนเลือกของที่ใช้ได้), ตารางของสูง 4 แถว (GRID_ROWS) แล้วเลื่อน
+     + ARCHITECTURE.md: หัวข้อ InventoryClient
+   - เฟส 7 ข้อ 4 + 5: หินคราฟต์ + แผ่นศิลา (endgame) [ยังไม่ได้เทสใน Studio]:
+     + StoneData (ใหม่): Ascension (อัปความหายาก), Carving (เพิ่ม affix), Shifting (สุ่ม affix ใหม่)
+       เป็นจำนวนต่อคน (profile.Stones เซฟลง DataStore) ไม่กินช่องกระเป๋า, ใช้กับอุปกรณ์และแผ่นศิลา
+     + TabletData (ใหม่): Stone Tablet มี Tier 1-10 (+15% เลือด, +10% ดาเมจ, +5% loot, +15% Magic/Rare ต่อ Tier)
+       + ม็อด MonsterSpeed/Health/Damage (Prefix), FrostAttacks/StormAttacks (Suffix) แต่ละอันเพิ่ม loot
+     + Crafting (ใหม่, server): addRandomAffixes / rerollAffixes (ย้ายการสุ่ม affix ออกจาก Loot) + useStone
+     + DungeonRun (ใหม่, server): แผ่นที่รอในประตู + ผลของรอบ, Changed event
+     + ItemData: Bases.StoneTablet, Item.Tier, getAffixPool / isTablet, ชื่อ + บรรทัด tooltip ของแผ่นศิลา
+     + Loot: spawnPickup ใช้ร่วม, dropStone, rollTablet, rollDrops(drops, pos, run, isBoss) + rollCount
+     + EnemyData Drops: StoneChance (Grunt 0.15, บอส 2), TabletChance (Grunt 0.02, บอส 1), ค่า *Chance = จำนวนที่คาดหวัง
+     + PlayerData: Stones, action Craft / PlaceTablet, addStone, Equip แผ่นศิลาไม่ได้, โหลด Tier + ม็อดแผ่นศิลา
+     + EnemyService: resetDungeon -> DungeonRun.startRun (คืนผลของรอบ), ศัตรูเกิดด้วยเลือด/ความเร็ว/ธาตุของรอบ,
+       ดาเมจ x Damage, ป้ายประตูโชว์แผ่นที่รอ, แจ้งทุกคนตอนเริ่มรอบแผ่นศิลา
+     + InventoryClient: ปุ่มหินคราฟต์ 3 ปุ่มเหนือ Equip (เมื่อเลือกอุปกรณ์/แผ่นศิลา), Place in Portal / Shift+คลิก
+     + ARCHITECTURE.md ทุกหัวข้อที่เกี่ยว + หัวข้อ StoneData / TabletData / Crafting / DungeonRun + บาลานซ์ + KNOWN ISSUES
+     + Google Doc "Project poe" + Project poe.docx: งานเฟส 7 + ไอเดียหินคราฟต์/แผ่นศิลา = กำลังทำ,
+       ก้าวถัดไป = เทสเฟส 7 ทั้งหมดก่อน แล้วค่อยไปผังพาสซีฟ + คลาส
    - เฟส 7 ข้อ 3: รูนสลักหิน (ระบบแต่งสกิล) [ยังไม่ได้เทสใน Studio]:
      + RuneData (ใหม่): Reach (+40% พื้นที่), Split (ฟันเพิ่มซ้ายขวา 35°, Slash เท่านั้น),
        Ember/Frost/Storm (กายภาพ 50% -> ไฟ/น้ำแข็ง/สายฟ้า), Detonation (ศพระเบิด 15% เลือดสูงสุด)

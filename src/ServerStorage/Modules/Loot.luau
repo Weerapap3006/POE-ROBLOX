@@ -1,14 +1,18 @@
 -- ==========================================
--- LOOT (Roll random items + spawn pickups on the ground)
+-- LOOT (Roll random items, runes, stones and tablets + spawn pickups on the ground)
 -- Path: ServerStorage.Modules.Loot
 -- ==========================================
 local Debris = game:GetService("Debris")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local ItemData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ItemData"))
-local RuneData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("RuneData"))
+local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
+local ItemData = require(modulesFolder:WaitForChild("ItemData"))
+local RuneData = require(modulesFolder:WaitForChild("RuneData"))
+local StoneData = require(modulesFolder:WaitForChild("StoneData"))
+local TabletData = require(modulesFolder:WaitForChild("TabletData"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
+local Crafting = require(script.Parent:WaitForChild("Crafting"))
 
 -- ==========================================
 -- CONFIGURATION
@@ -17,11 +21,14 @@ local DROP_LIFETIME = 90 -- Seconds before an item nobody picked up disappears
 local PICKUP_DISTANCE = 10
 local SCATTER = 3 -- Drops land up to this many studs from the enemy
 
+-- EnemyData Drops. The *Chance values are expected counts: 0.15 = 15% for one, 1.5 = one + 50% for a second
 export type DropTable = {
 	Rolls: number,
 	Chance: number,
 	RarityWeights: { [string]: number },
 	RuneChance: number?,
+	StoneChance: number?,
+	TabletChance: number?,
 }
 
 local Loot = {}
@@ -38,10 +45,10 @@ local function getDropsFolder(): Instance
 	return folder
 end
 
-local function pickRarity(weights: { [string]: number }): string?
+local function pickWeighted(order: { string }, weights: { [string]: number }): string?
 	local total = 0
-	for _, rarity in ipairs(ItemData.RarityOrder) do
-		total += weights[rarity] or 0
+	for _, key in ipairs(order) do
+		total += weights[key] or 0
 	end
 	if total <= 0 then
 		return nil
@@ -49,10 +56,10 @@ local function pickRarity(weights: { [string]: number }): string?
 
 	local roll = random:NextNumber() * total
 	local picked: string? = nil
-	for _, rarity in ipairs(ItemData.RarityOrder) do
-		local weight = weights[rarity] or 0
+	for _, key in ipairs(order) do
+		local weight = weights[key] or 0
 		if weight > 0 then
-			picked = rarity
+			picked = key
 			if roll < weight then
 				break
 			end
@@ -62,58 +69,32 @@ local function pickRarity(weights: { [string]: number }): string?
 	return picked
 end
 
+-- 1.6 -> 1, plus a 60% chance of 2
+local function rollCount(expected: number): number
+	local whole = math.floor(expected)
+	return whole + (if random:NextNumber() < expected - whole then 1 else 0)
+end
+
 -- ==========================================
 -- 1. ROLL ITEMS (server only: clients must never decide loot)
 -- ==========================================
 function Loot.rollItem(rarity: string): ItemData.Item
 	local baseIds = {}
 	for baseId, base in pairs(ItemData.Bases) do
-		if base.Slot ~= "Rune" then -- Runes drop on their own (rollRune)
+		if base.Slot ~= "Rune" and base.Slot ~= "Tablet" then -- Runes and tablets drop on their own
 			table.insert(baseIds, baseId)
 		end
 	end
 	table.sort(baseIds)
-	local baseId = baseIds[random:NextInteger(1, #baseIds)]
 
-	local rarityInfo = ItemData.Rarities[rarity]
-	local affixCount = random:NextInteger(rarityInfo.MinAffixes, rarityInfo.MaxAffixes)
-
-	-- Shuffle the affix pool, then take affixes in order while respecting the prefix / suffix limits
-	local pool = {}
-	for affixId in pairs(ItemData.Affixes) do
-		table.insert(pool, affixId)
-	end
-	table.sort(pool)
-	for i = #pool, 2, -1 do
-		local j = random:NextInteger(1, i)
-		pool[i], pool[j] = pool[j], pool[i]
-	end
-
-	local affixes: { ItemData.Affix } = {}
-	local counts = { Prefix = 0, Suffix = 0 }
-	local limits = { Prefix = rarityInfo.MaxPrefixes, Suffix = rarityInfo.MaxSuffixes }
-	for _, affixId in ipairs(pool) do
-		if #affixes >= affixCount then
-			break
-		end
-		local affix = ItemData.Affixes[affixId]
-		if counts[affix.Kind] < limits[affix.Kind] then
-			counts[affix.Kind] += 1
-			table.insert(affixes, { Id = affixId, Value = random:NextInteger(affix.Min, affix.Max) })
-		end
-	end
-
-	-- Prefixes first so tooltips always read in the same order
-	table.sort(affixes, function(a, b)
-		return ItemData.Affixes[a.Id].Kind < ItemData.Affixes[b.Id].Kind
-	end)
-
-	return {
+	local item: ItemData.Item = {
 		Id = HttpService:GenerateGUID(false),
-		Base = baseId,
+		Base = baseIds[random:NextInteger(1, #baseIds)],
 		Rarity = rarity,
-		Affixes = affixes,
+		Affixes = {},
 	}
+	Crafting.rerollAffixes(item)
+	return item
 end
 
 -- A random stone rune (every rune equally likely)
@@ -131,12 +112,24 @@ function Loot.rollRune(): ItemData.Item
 	}
 end
 
+-- A Stone Tablet: rarity decides how many mods it rolls, like gear
+function Loot.rollTablet(tier: number, rarity: string): ItemData.Item
+	local tablet: ItemData.Item = {
+		Id = HttpService:GenerateGUID(false),
+		Base = "StoneTablet",
+		Rarity = rarity,
+		Affixes = {},
+		Tier = math.clamp(tier, 1, TabletData.MAX_TIER),
+	}
+	Crafting.rerollAffixes(tablet)
+	return tablet
+end
+
 -- ==========================================
 -- 2. SPAWN A PICKUP ON THE GROUND
 -- ==========================================
-function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
-	local rarity = ItemData.Rarities[item.Rarity]
-	local itemName = ItemData.getName(item)
+-- onPickup returns false when the player couldn't take it (e.g. full inventory): it stays on the ground
+local function spawnPickup(name: string, color: Color3, groundPosition: Vector3, onPickup: (player: Player) -> boolean)
 	local scatter = Vector3.new(random:NextNumber(-SCATTER, SCATTER), 0, random:NextNumber(-SCATTER, SCATTER))
 
 	local part = Instance.new("Part")
@@ -147,10 +140,10 @@ function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
 	part.CanQuery = false
 	part.CanTouch = false
 	part.Material = Enum.Material.Neon
-	part.Color = rarity.Color
+	part.Color = color
 	part.CFrame = CFrame.new(groundPosition + scatter + Vector3.new(0, 0.8, 0)) * CFrame.Angles(0, math.rad(45), 0)
 
-	-- Floating name tag in the rarity color, readable from a distance
+	-- Floating name tag in the drop's color, readable from a distance
 	local billboard = Instance.new("BillboardGui")
 	billboard.Size = UDim2.fromOffset(180, 24)
 	billboard.StudsOffsetWorldSpace = Vector3.new(0, 1.4, 0)
@@ -163,8 +156,8 @@ function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.GothamBold
 	label.TextSize = 16
-	label.Text = itemName
-	label.TextColor3 = rarity.Color
+	label.Text = name
+	label.TextColor3 = color
 	label.TextStrokeColor3 = Color3.fromRGB(10, 10, 14)
 	label.TextStrokeTransparency = 0
 	label.Parent = billboard
@@ -172,7 +165,7 @@ function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
 	-- Pick up with E (PC) or by tapping the prompt (mobile)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Pick Up"
-	prompt.ObjectText = itemName
+	prompt.ObjectText = name
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = PICKUP_DISTANCE
 	prompt.RequiresLineOfSight = false
@@ -183,7 +176,7 @@ function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
 		if pickedUp then
 			return
 		end
-		if PlayerData.addItem(player, item) then
+		if onPickup(player) then
 			pickedUp = true
 			part:Destroy()
 		end
@@ -193,18 +186,66 @@ function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
 	Debris:AddItem(part, DROP_LIFETIME)
 end
 
--- Roll an enemy's drop table (EnemyData.Drops) and spawn whatever drops
-function Loot.rollDrops(drops: DropTable, groundPosition: Vector3)
-	for _ = 1, drops.Rolls do
+function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
+	local rarity = ItemData.Rarities[item.Rarity]
+	spawnPickup(ItemData.getName(item), rarity.Color, groundPosition, function(player: Player)
+		return PlayerData.addItem(player, item)
+	end)
+end
+
+-- Crafting stones don't take an inventory slot: picking one up just adds to the player's count
+function Loot.dropStone(stoneId: string, groundPosition: Vector3)
+	spawnPickup(StoneData.Stones[stoneId].Name, StoneData.COLOR, groundPosition, function(player: Player)
+		return PlayerData.addStone(player, stoneId, 1)
+	end)
+end
+
+-- ==========================================
+-- 3. ENEMY DROPS
+-- ==========================================
+-- Rolls an enemy's drop table (EnemyData.Drops). run = the current dungeon run (DungeonRun): its tablet tier and
+-- mods add loot (Quantity) and make Magic / Rare more likely (RarityBoost)
+function Loot.rollDrops(drops: DropTable, groundPosition: Vector3, run: TabletData.Effects, isBoss: boolean)
+	local more = 1 + run.Quantity
+	local weights = table.clone(drops.RarityWeights)
+	for _, rarity in ipairs({ "Magic", "Rare" }) do
+		if weights[rarity] then
+			weights[rarity] *= 1 + run.RarityBoost
+		end
+	end
+
+	for _ = 1, rollCount(drops.Rolls * more) do
 		if random:NextNumber() < drops.Chance then
-			local rarity = pickRarity(drops.RarityWeights)
+			local rarity = pickWeighted(ItemData.RarityOrder, weights)
 			if rarity then
 				Loot.dropItem(Loot.rollItem(rarity), groundPosition)
 			end
 		end
 	end
-	if drops.RuneChance and random:NextNumber() < drops.RuneChance then
+
+	for _ = 1, rollCount((drops.RuneChance or 0) * more) do
 		Loot.dropItem(Loot.rollRune(), groundPosition)
+	end
+
+	local stoneWeights = {}
+	for stoneId, stone in pairs(StoneData.Stones) do
+		stoneWeights[stoneId] = stone.DropWeight
+	end
+	for _ = 1, rollCount((drops.StoneChance or 0) * more) do
+		local stoneId = pickWeighted(StoneData.Order, stoneWeights)
+		if stoneId then
+			Loot.dropStone(stoneId, groundPosition)
+		end
+	end
+
+	-- Tablets: plain dungeon = Tier 1, a tablet run = its tier (the boss sometimes one higher)
+	for _ = 1, rollCount((drops.TabletChance or 0) * more) do
+		local tier = math.max(run.Tier, 1)
+		if run.Tier > 0 and isBoss and random:NextNumber() < TabletData.BOSS_TIER_UP_CHANCE then
+			tier += 1
+		end
+		local rarity = pickWeighted(ItemData.RarityOrder, weights) or "Normal"
+		Loot.dropItem(Loot.rollTablet(tier, rarity), groundPosition)
 	end
 end
 

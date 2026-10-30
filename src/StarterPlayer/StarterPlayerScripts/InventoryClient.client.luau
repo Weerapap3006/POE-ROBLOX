@@ -1,5 +1,6 @@
 -- ==========================================
--- INVENTORY CLIENT (Inventory window: view items, equip / unequip / discard, skill rune sockets, Shift+Click and X hotkeys)
+-- INVENTORY CLIENT (Inventory window: view items, equip / unequip / discard, skill rune sockets, crafting stones,
+-- Stone Tablets -> portal, Shift+Click and X hotkeys)
 -- Path: StarterPlayer.StarterPlayerScripts.InventoryClient
 -- ==========================================
 -- The server owns the inventory. This script only shows the last "Sync" and sends requests
@@ -17,6 +18,7 @@ local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local ItemData = require(modulesFolder:WaitForChild("ItemData"))
 local SkillData = require(modulesFolder:WaitForChild("SkillData"))
 local RuneData = require(modulesFolder:WaitForChild("RuneData"))
+local StoneData = require(modulesFolder:WaitForChild("StoneData"))
 local Elements = require(modulesFolder:WaitForChild("Elements"))
 local Ui = require(modulesFolder:WaitForChild("Ui"))
 
@@ -33,7 +35,9 @@ local SIDE_WIDTH = 200
 local CONTENT_HEIGHT = 340
 local RUNE_STRIP_HEIGHT = 70 -- Skill rune sockets along the bottom of the window
 local SOCKET_SIZE = 40
+local GRID_ROWS = 4 -- Rows shown before the grid scrolls (crafting stones sit below them)
 local GRID_WIDTH = GRID_COLUMNS * CELL_SIZE + (GRID_COLUMNS - 1) * CELL_GAP
+local GRID_HEIGHT = GRID_ROWS * CELL_SIZE + (GRID_ROWS - 1) * CELL_GAP
 local WINDOW_WIDTH = 12 + SIDE_WIDTH + 12 + GRID_WIDTH + 12 + SIDE_WIDTH + 12
 local WINDOW_HEIGHT = 48 + CONTENT_HEIGHT + 12 + RUNE_STRIP_HEIGHT
 
@@ -50,9 +54,13 @@ table.sort(SKILL_ORDER)
 local inventory: { ItemData.Item } = {}
 local equipped: { [string]: ItemData.Item } = {}
 local skillRunes: { [string]: { ItemData.Item } } = {} -- Runes socketed in each skill, in socket order
+local stones: { [string]: number } = {} -- Crafting stones owned (StoneData id -> count)
 local capacity = 20
 local selectedId: string? = nil
 local confirmingDiscard = false
+-- Crafting stone whose valid targets light up: hovered tile (PC) or a tile tapped with nothing selected (pinned)
+local hoveredStone: string? = nil
+local pinnedStone: string? = nil
 
 local isTouchOnly = Ui.isTouchOnly()
 
@@ -243,9 +251,9 @@ local statsLabel = Ui.text({
 	Parent = leftColumn,
 })
 
--- Middle: item grid (scrolls if capacity grows past what fits)
+-- Middle: item grid (scrolls if capacity grows past GRID_ROWS)
 local grid = Ui.new("ScrollingFrame", {
-	Size = UDim2.fromScale(1, 1),
+	Size = UDim2.new(1, 0, 0, GRID_HEIGHT),
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
 	ScrollBarThickness = 4,
@@ -260,6 +268,63 @@ local grid = Ui.new("ScrollingFrame", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}),
 })
+
+-- Under the grid: crafting stones owned (StoneData). They're a count, not bag items, so they take no slots.
+-- Select gear or a Stone Tablet, then click a stone to use one on it (the server checks the rules)
+local STONES_TOP = GRID_HEIGHT + 8
+Ui.text({
+	Position = UDim2.fromOffset(0, STONES_TOP),
+	Size = UDim2.new(1, 0, 0, 16),
+	Text = "CRAFTING STONES",
+	TextSize = 13,
+	TextColor3 = StoneData.COLOR,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = gridColumn,
+})
+Ui.text({
+	Position = UDim2.fromOffset(0, STONES_TOP),
+	Size = UDim2.new(1, 0, 0, 16),
+	Text = if isTouchOnly then "Select an item, then tap a stone" else "Select an item, then a stone",
+	TextSize = 11,
+	TextColor3 = Ui.Colors.TextDim,
+	TextXAlignment = Enum.TextXAlignment.Right,
+	Parent = gridColumn,
+})
+local stoneRow = Ui.new("Frame", {
+	Name = "CraftingStones",
+	Position = UDim2.fromOffset(0, STONES_TOP + 20),
+	Size = UDim2.new(1, 0, 0, CONTENT_HEIGHT - STONES_TOP - 20),
+	BackgroundTransparency = 1,
+	Parent = gridColumn,
+}, {
+	Ui.new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		Padding = UDim.new(0, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
+local stoneButtons: { [string]: TextButton } = {}
+for order, stoneId in ipairs(StoneData.Order) do
+	stoneButtons[stoneId] = Ui.button({
+		Name = stoneId,
+		LayoutOrder = order,
+		Size = UDim2.new(1 / #StoneData.Order, -4, 1, 0),
+		BackgroundColor3 = Ui.Colors.Panel,
+		TextScaled = true,
+		Text = "",
+		Parent = stoneRow,
+	}, {
+		Ui.corner(6),
+		Ui.stroke(StoneData.COLOR, 1),
+		Ui.new("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 4),
+		}),
+		Ui.new("UITextSizeConstraint", { MaxTextSize = 13 }),
+	})
+end
 
 -- Right: details of the selected item
 local detailName = Ui.text({
@@ -393,6 +458,64 @@ local function isShiftDown(): boolean
 	return UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 end
 
+-- True when the highlighted crafting stone (hovered / pinned tile) can be used on this item
+local function isStoneTarget(item: ItemData.Item?): boolean
+	local stoneId = hoveredStone or pinnedStone
+	return stoneId ~= nil and item ~= nil and StoneData.whyNot(stoneId, item) == nil
+end
+
+local function getCellColor(item: ItemData.Item?): Color3
+	if item and item.Id == selectedId then
+		return Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
+	elseif isStoneTarget(item) then
+		return StoneData.COLOR:Lerp(Ui.Colors.PanelLight, 0.55)
+	end
+	return Ui.Colors.PanelLight
+end
+
+-- Affix pips along the bottom of a gear / tablet cell: filled = an affix it has, hollow = a free spot
+-- (a Carving Stone can fill it). Normal items have no spots until an Ascension Stone makes them Magic
+local PIP_SIZE = 6
+local function renderPips(cell: GuiObject, item: ItemData.Item?)
+	local old = cell:FindFirstChild("AffixPips")
+	if old then
+		old:Destroy()
+	end
+	local padding = cell:FindFirstChildOfClass("UIPadding")
+	local rarityInfo = if item and not ItemData.getRuneId(item) then ItemData.Rarities[item.Rarity] else nil
+	local spots = if rarityInfo then rarityInfo.MaxAffixes else 0
+	if padding then
+		padding.PaddingBottom = UDim.new(0, if spots > 0 then 11 else 3) -- Keep the name clear of the pips
+	end
+	if not item or spots == 0 then
+		return
+	end
+
+	local color = getRarityColor(item)
+	local pips = Ui.new("Frame", {
+		Name = "AffixPips",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, 8),
+		Size = UDim2.new(1, 0, 0, PIP_SIZE),
+		BackgroundTransparency = 1,
+		Parent = cell,
+	}, {
+		Ui.new("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 3),
+		}),
+	})
+	for index = 1, spots do
+		Ui.new("Frame", {
+			Size = UDim2.fromOffset(PIP_SIZE, PIP_SIZE),
+			BackgroundColor3 = color,
+			BackgroundTransparency = if index <= #item.Affixes then 0 else 1,
+			Parent = pips,
+		}, { Ui.corner(PIP_SIZE / 2), Ui.stroke(color, 1) })
+	end
+end
+
 local function renderGrid()
 	for _, child in ipairs(grid:GetChildren()) do
 		if child:IsA("GuiButton") then
@@ -405,7 +528,7 @@ local function renderGrid()
 		local isSelected = item ~= nil and item.Id == selectedId
 		local cell = Ui.button({
 			LayoutOrder = index,
-			BackgroundColor3 = if isSelected then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6) else Ui.Colors.PanelLight,
+			BackgroundColor3 = getCellColor(item),
 			Text = if item then ItemData.getName(item) else "",
 			TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim,
 			TextScaled = true,
@@ -422,15 +545,20 @@ local function renderGrid()
 				PaddingBottom = UDim.new(0, 3),
 			}),
 		})
+		renderPips(cell, item)
 		if item then
 			cell:SetAttribute("ItemId", item.Id) -- Lets the X hotkey find which item is under the mouse
 			cell.Activated:Connect(function()
-				-- Shift + click: equip right away, or socket a rune into the first skill it fits
-				-- (the server says why if it can't, e.g. Off-Hand locked / no free socket)
+				-- Shift + click: equip right away, socket a rune into the first skill it fits, or put a tablet
+				-- in the portal (the server says why if it can't, e.g. Off-Hand locked / no free socket)
 				if isShiftDown() then
 					selectedId = item.Id
 					confirmingDiscard = false
-					inventoryRemote:FireServer(if ItemData.getRuneId(item) then "Socket" else "Equip", item.Id)
+					local action = if ItemData.getRuneId(item)
+						then "Socket"
+						elseif ItemData.isTablet(item) then "PlaceTablet"
+						else "Equip"
+					inventoryRemote:FireServer(action, item.Id)
 					return
 				end
 				selectItem(item.Id)
@@ -444,6 +572,7 @@ local function renderEquipped()
 	for slot, button in pairs(slotButtons) do
 		local item = equipped[slot]
 		local slotName = ItemData.SlotNames[slot] or slot
+		renderPips(button, item)
 		if slot == "OffHand" and offHandLocked and not item then
 			button.Text = slotName .. "\n[Locked]"
 			button.TextColor3 = Color3.fromRGB(190, 95, 95)
@@ -451,9 +580,7 @@ local function renderEquipped()
 		else
 			button.Text = if item then slotName .. "\n" .. ItemData.getName(item) else slotName
 			button.TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim
-			button.BackgroundColor3 = if item and item.Id == selectedId
-				then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
-				else Ui.Colors.PanelLight
+			button.BackgroundColor3 = getCellColor(item)
 		end
 	end
 end
@@ -587,6 +714,17 @@ local function renderDetails()
 	for _, line in ipairs(affixLines) do
 		table.insert(lines, string.format('<font color="#%s">%s</font>', ItemData.Rarities.Magic.Color:ToHex(), line))
 	end
+
+	-- How many affixes out of the rarity's maximum, and whether a Carving Stone can add one
+	local maxAffixes = if rarity then rarity.MaxAffixes else 0
+	local hasRoom = StoneData.hasAffixRoom(item)
+	local status = if maxAffixes == 0
+		then "No affix spots: an Ascension Stone makes it Magic"
+		elseif hasRoom then string.format("Affixes %d/%d: room for more (Carving Stone)", #item.Affixes, maxAffixes)
+		else string.format("Affixes %d/%d: full", #item.Affixes, maxAffixes)
+	local statusColor = if hasRoom then Color3.fromRGB(130, 220, 140) else Ui.Colors.TextDim
+	table.insert(lines, "")
+	table.insert(lines, string.format('<font color="#%s">%s</font>', statusColor:ToHex(), status))
 	detailLines.Text = table.concat(lines, "\n")
 
 	actionButton.Visible = true
@@ -597,6 +735,9 @@ local function renderDetails()
 	if equippedSlot then
 		actionButton.Text = "Unequip"
 		actionButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
+	elseif ItemData.isTablet(item) then
+		actionButton.Text = "Place in Portal" -- The next dungeon run (for everyone) uses it
+		actionButton.BackgroundColor3 = Color3.fromRGB(90, 75, 40)
 	elseif isBlockedOffHand then
 		actionButton.Text = "Off-Hand Locked"
 		actionButton.BackgroundColor3 = Color3.fromRGB(85, 65, 65)
@@ -609,10 +750,29 @@ local function renderDetails()
 	discardButton.Text = if confirmingDiscard then "Click Again to Confirm" else "Discard"
 end
 
+-- Stone tiles: name, how many you have, what it does. A tile lights up when you have it and it can be used
+-- on the selected item (StoneData.whyNot, the server's rules); a pinned tile gets a thick outline
+local function renderStones()
+	local selected = findItem(selectedId)
+	for stoneId, button in pairs(stoneButtons) do
+		local stone = StoneData.Stones[stoneId]
+		local count = stones[stoneId] or 0
+		local usable = selected ~= nil and count > 0 and StoneData.whyNot(stoneId, selected) == nil
+		button.Text = string.format("%s\nx%d\n%s", stone.Name, count, stone.Action)
+		button.TextColor3 = if count > 0 then Ui.Colors.Text else Ui.Colors.TextDim
+		button.BackgroundColor3 = if usable then StoneData.COLOR:Lerp(Ui.Colors.Panel, 0.7) else Ui.Colors.Panel
+		local stroke = button:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Thickness = if pinnedStone == stoneId then 3 else 1
+		end
+	end
+end
+
 function render()
 	renderGrid()
 	renderEquipped()
 	renderRunes()
+	renderStones()
 	renderStats()
 	renderDetails()
 end
@@ -652,6 +812,33 @@ for skillId, buttons in pairs(socketButtons) do
 	end
 end
 
+-- Crafting stone tiles: use one on the selected item (bag or equipped; the server checks the rules).
+-- Hover (PC) lights up every item the stone can be used on; with nothing selected, a click / tap pins that
+-- highlight instead (how phones see it), click the same stone again to unpin
+for stoneId, button in pairs(stoneButtons) do
+	if not isTouchOnly then
+		button.MouseEnter:Connect(function()
+			hoveredStone = stoneId
+			render()
+		end)
+		button.MouseLeave:Connect(function()
+			if hoveredStone == stoneId then
+				hoveredStone = nil
+				render()
+			end
+		end)
+	end
+	button.Activated:Connect(function()
+		local item = findItem(selectedId)
+		if item then
+			inventoryRemote:FireServer("Craft", stoneId, item.Id)
+		else
+			pinnedStone = if pinnedStone == stoneId then nil else stoneId
+			render()
+		end
+	end)
+end
+
 actionButton.Activated:Connect(function()
 	local item, equippedSlot = findItem(selectedId)
 	if not item then
@@ -666,6 +853,8 @@ actionButton.Activated:Connect(function()
 		inventoryRemote:FireServer("Unequip", equippedSlot)
 	elseif ItemData.getRuneId(item) then
 		inventoryRemote:FireServer("Socket", item.Id) -- Auto-Socket: first skill it fits with a free socket
+	elseif ItemData.isTablet(item) then
+		inventoryRemote:FireServer("PlaceTablet", item.Id)
 	else
 		inventoryRemote:FireServer("Equip", item.Id)
 	end
@@ -689,6 +878,8 @@ end)
 local function setOpen(open: boolean)
 	window.Visible = open
 	confirmingDiscard = false
+	pinnedStone = nil
+	hoveredStone = nil
 	if open then
 		render()
 	end
@@ -756,6 +947,7 @@ inventoryRemote.OnClientEvent:Connect(function(action: string, data: any)
 	inventory = data.Inventory or {}
 	equipped = data.Equipped or {}
 	skillRunes = data.SkillRunes or {}
+	stones = data.Stones or {}
 	capacity = data.Capacity or capacity
 	if not findItem(selectedId) and not findSocketed(selectedId) then
 		selectedId = nil
