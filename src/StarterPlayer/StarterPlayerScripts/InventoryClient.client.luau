@@ -21,6 +21,7 @@ local RuneData = require(modulesFolder:WaitForChild("RuneData"))
 local StoneData = require(modulesFolder:WaitForChild("StoneData"))
 local Elements = require(modulesFolder:WaitForChild("Elements"))
 local PlayerStats = require(modulesFolder:WaitForChild("PlayerStats"))
+local SpiritData = require(modulesFolder:WaitForChild("SpiritData"))
 local Ui = require(modulesFolder:WaitForChild("Ui"))
 
 -- ==========================================
@@ -54,6 +55,7 @@ end
 table.sort(SKILL_ORDER)
 -- A skill bar slot picked in the strip is "selected" with this pseudo item id + the slot number
 local BAR_SELECTION = "SkillSlot:"
+local SPIRIT_SELECTION = "SpiritSlot:" -- Same for a spirit slot
 
 -- ==========================================
 -- STATE (replaced by every "Sync" from the server)
@@ -61,6 +63,7 @@ local BAR_SELECTION = "SkillSlot:"
 local inventory: { ItemData.Item } = {}
 local equipped: { [string]: ItemData.Item } = {}
 local skillBar: { string } = {} -- Skill id in each skill bar slot, "" = empty
+local spirits: { string } = {} -- Stone Spirit id in each spirit slot, "" = empty
 local skillRunes: { [string]: { ItemData.Item } } = {} -- Runes socketed in each skill, in socket order
 local stones: { [string]: number } = {} -- Crafting stones owned (StoneData id -> count)
 local capacity = 20
@@ -106,6 +109,14 @@ end
 local function getSelectedBarSlot(): number?
 	if selectedId and string.sub(selectedId, 1, #BAR_SELECTION) == BAR_SELECTION then
 		return tonumber(string.sub(selectedId, #BAR_SELECTION + 1))
+	end
+	return nil
+end
+
+-- The spirit slot picked next to the gear (nil when an item or nothing is selected)
+local function getSelectedSpiritSlot(): number?
+	if selectedId and string.sub(selectedId, 1, #SPIRIT_SELECTION) == SPIRIT_SELECTION then
+		return tonumber(string.sub(selectedId, #SPIRIT_SELECTION + 1))
 	end
 	return nil
 end
@@ -241,6 +252,38 @@ for _, info in ipairs(SLOT_LAYOUT) do
 	}, {
 		Ui.corner(6),
 		Ui.stroke(Ui.Colors.Stroke, 1.5),
+		Ui.new("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 4),
+		}),
+		Ui.new("UITextSizeConstraint", {
+			MaxTextSize = 12,
+			MinTextSize = 8,
+		}),
+	})
+end
+
+-- Left: Stone Spirit slots in the free cells next to the gear (every spirit in a slot floats along with you)
+local SPIRIT_LAYOUT: { { Col: number, Row: number } } = {
+	{ Col = 2, Row = 2 },
+	{ Col = 2, Row = 3 },
+	{ Col = 1, Row = 3 },
+}
+local spiritButtons: { TextButton } = {}
+for slot, info in ipairs(SPIRIT_LAYOUT) do
+	spiritButtons[slot] = Ui.button({
+		Name = "Spirit" .. slot,
+		Position = UDim2.fromOffset(info.Col * (SLOT_SIZE + SLOT_GAP), 24 + info.Row * (SLOT_SIZE + SLOT_GAP)),
+		Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE),
+		TextSize = 11,
+		TextScaled = true,
+		TextWrapped = true,
+		Parent = leftColumn,
+	}, {
+		Ui.corner(SLOT_SIZE / 2), -- Round, so they don't look like gear slots
+		Ui.stroke(ItemData.Rarities.Spirit.Color, 1.5),
 		Ui.new("UIPadding", {
 			PaddingLeft = UDim.new(0, 4),
 			PaddingRight = UDim.new(0, 4),
@@ -566,6 +609,7 @@ local function renderGrid()
 					local action = if ItemData.getRuneId(item)
 						then "Socket"
 						elseif ItemData.getSkillId(item) then "SetSkill"
+						elseif ItemData.getSpiritId(item) then "SetSpirit"
 						elseif ItemData.isTablet(item) then "PlaceTablet"
 						else "Equip"
 					inventoryRemote:FireServer(action, item.Id)
@@ -592,6 +636,21 @@ local function renderEquipped()
 			button.TextColor3 = if item then getRarityColor(item) else Ui.Colors.TextDim
 			button.BackgroundColor3 = getCellColor(item)
 		end
+	end
+
+	-- Spirit slots: a spirit selected in the bag lights up the slots it can go into
+	local selected, selectedSlot = findItem(selectedId)
+	local selectedSpirit = if selected and not selectedSlot then ItemData.getSpiritId(selected) else nil
+	local spiritColor = ItemData.Rarities.Spirit.Color
+	for slot, button in ipairs(spiritButtons) do
+		local spirit = SpiritData.Spirits[spirits[slot] or ""]
+		button.Text = if spirit then string.format("Spirit %d\n%s", slot, spirit.Name) else string.format("Spirit %d", slot)
+		button.TextColor3 = if spirit then spiritColor else Ui.Colors.TextDim
+		local canPlace = selectedSpirit ~= nil and not table.find(spirits, selectedSpirit)
+		button.BackgroundColor3 = if getSelectedSpiritSlot() == slot
+			then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.6)
+			elseif canPlace then spiritColor:Lerp(Ui.Colors.Panel, 0.65)
+			else Ui.Colors.PanelLight
 	end
 end
 
@@ -741,7 +800,53 @@ local function renderSkillDetails(skillId: string, slot: number?)
 	discardButton.Text = if confirmingDiscard then "Click Again to Confirm" else "Discard"
 end
 
+-- A Stone Spirit in the bag (slot = nil) or in a spirit slot: the bonuses it gives while it's in a slot
+local function renderSpiritDetails(spiritId: string, slot: number?)
+	local spirit = SpiritData.Spirits[spiritId]
+	local dim = Ui.Colors.TextDim:ToHex()
+	detailName.Text = spirit.Name
+	detailName.TextColor3 = ItemData.Rarities.Spirit.Color
+	detailInfo.Text = if slot then string.format("Stone Spirit · Spirit slot %d", slot) else "Stone Spirit"
+
+	local lines = {}
+	for stat, value in pairs(spirit.Stats) do
+		table.insert(lines, string.format('<font color="#%s">%s</font>', ItemData.Rarities.Magic.Color:ToHex(), ItemData.formatStat(stat, value)))
+	end
+	table.sort(lines)
+	local inSlot = table.find(spirits, spiritId) ~= nil
+	local hint = if slot
+		then "Gives its bonus and floats along with you"
+		elseif inSlot then "Already in a spirit slot"
+		else "Select it, then a round spirit slot (or Bind Spirit)"
+	table.insert(lines, "")
+	table.insert(lines, string.format('<font color="#%s">%s</font>', dim, hint))
+	detailLines.Text = table.concat(lines, "\n")
+
+	actionButton.Visible = slot ~= nil or not inSlot
+	actionButton.Text = if slot then "Release Spirit" else "Bind Spirit"
+	actionButton.BackgroundColor3 = Color3.fromRGB(40, 110, 70)
+	discardButton.Visible = slot == nil
+	discardButton.Text = if confirmingDiscard then "Click Again to Confirm" else "Discard"
+end
+
 local function renderDetails()
+	-- A spirit slot picked next to the gear
+	local spiritSlot = getSelectedSpiritSlot()
+	if spiritSlot then
+		local spiritId = spirits[spiritSlot] or ""
+		if SpiritData.Spirits[spiritId] then
+			renderSpiritDetails(spiritId, spiritSlot)
+		else
+			detailName.Text = "Empty spirit slot"
+			detailName.TextColor3 = Ui.Colors.TextDim
+			detailInfo.Text = string.format("Spirit slot %d", spiritSlot)
+			detailLines.Text = "Stone Spirits drop from bosses. Select one in your bag, then click this slot"
+			actionButton.Visible = false
+			discardButton.Visible = false
+		end
+		return
+	end
+
 	-- A skill bar slot picked in the strip
 	local barSlot = getSelectedBarSlot()
 	if barSlot then
@@ -782,6 +887,11 @@ local function renderDetails()
 	local skillId = ItemData.getSkillId(item)
 	if skillId then
 		renderSkillDetails(skillId, nil)
+		return
+	end
+	local spiritId = ItemData.getSpiritId(item)
+	if spiritId then
+		renderSpiritDetails(spiritId, nil)
 		return
 	end
 
@@ -885,6 +995,23 @@ for slot, button in pairs(slotButtons) do
 	end)
 end
 
+-- Spirit slot: with a Stone Spirit selected in the bag, put it here (the spirit already there goes back into the bag).
+-- Otherwise select the slot (Shift + click: release its spirit right away)
+for slot, button in ipairs(spiritButtons) do
+	button.Activated:Connect(function()
+		local selected, equippedSlot = findItem(selectedId)
+		if selected and not equippedSlot and ItemData.getSpiritId(selected) then
+			inventoryRemote:FireServer("SetSpirit", selected.Id, slot)
+			selectItem(SPIRIT_SELECTION .. slot)
+			return
+		end
+		if isShiftDown() and (spirits[slot] or "") ~= "" then
+			inventoryRemote:FireServer("ClearSpirit", slot)
+		end
+		selectItem(SPIRIT_SELECTION .. slot)
+	end)
+end
+
 -- Skill bar slot name: with a Skill Stone selected in the bag, put its skill here (the skill already there goes
 -- back into the bag). Otherwise select the slot (Shift + click: take its skill off right away)
 for slot, header in ipairs(skillSlotButtons) do
@@ -960,6 +1087,11 @@ actionButton.Activated:Connect(function()
 		inventoryRemote:FireServer("ClearSkill", barSlot) -- Back into the bag as a Skill Stone
 		return
 	end
+	local spiritSlot = getSelectedSpiritSlot()
+	if spiritSlot then
+		inventoryRemote:FireServer("ClearSpirit", spiritSlot) -- Back into the bag
+		return
+	end
 	local item, equippedSlot = findItem(selectedId)
 	if not item then
 		-- A socketed rune: take it out of its skill
@@ -975,6 +1107,8 @@ actionButton.Activated:Connect(function()
 		inventoryRemote:FireServer("Socket", item.Id) -- Auto-Socket: first skill on the bar it fits with a free socket
 	elseif ItemData.getSkillId(item) then
 		inventoryRemote:FireServer("SetSkill", item.Id) -- First empty skill bar slot
+	elseif ItemData.getSpiritId(item) then
+		inventoryRemote:FireServer("SetSpirit", item.Id) -- First empty spirit slot
 	elseif ItemData.isTablet(item) then
 		inventoryRemote:FireServer("PlaceTablet", item.Id)
 	else
@@ -1069,10 +1203,12 @@ inventoryRemote.OnClientEvent:Connect(function(action: string, data: any)
 	inventory = data.Inventory or {}
 	equipped = data.Equipped or {}
 	skillBar = data.SkillBar or {}
+	spirits = data.Spirits or {}
 	skillRunes = data.SkillRunes or {}
 	stones = data.Stones or {}
 	capacity = data.Capacity or capacity
-	if not findItem(selectedId) and not findSocketed(selectedId) and not getSelectedBarSlot() then
+	local keepSelection = findItem(selectedId) or findSocketed(selectedId) or getSelectedBarSlot() or getSelectedSpiritSlot()
+	if not keepSelection then
 		selectedId = nil
 	end
 	if window.Visible then

@@ -32,6 +32,13 @@ local DROPS_FOLDER_NAME = "Drops" -- Loot's folder of items on the ground
 local ALERT_TIME = 0.6 -- Seconds an enemy stands still (with a "!" over its head) after spotting a player
 local EYE_HEIGHT = 1.9 -- Studs above the root center at Scale 1; players must be visible from here to be spotted
 local PORTAL_STREAM_TIMEOUT = 3 -- Max seconds the dungeon portal waits for the entrance area to load on the client
+-- Dense maps: a marker of a type with a Pack (EnemyData) spawns the whole pack within PACK_SPREAD studs of it.
+-- At most MAX_ENEMIES non-boss enemies per run, so phones keep up (bosses always spawn)
+local PACK_SPREAD = 3.5
+local MAX_ENEMIES = 60
+-- Projectile attacks (Stone Slinger): the shot flies a bit past the attack range, moving in steps this long
+local PROJECTILE_EXTRA_RANGE = 10
+local PROJECTILE_STEP = 0.05
 
 -- Pathfinding: enemies walk straight at their goal unless the map blocks the way, then follow a detour
 local PATH_AGENT_RADIUS = 2 -- Studs at Scale 1 (the body is ~4 studs arm to arm)
@@ -71,6 +78,7 @@ type EnemyState = {
 	Returning: boolean, -- Walking home after being pulled past LeashRange
 	Attacking: boolean, -- In an attack windup
 	Dead: boolean,
+	Exploded: boolean, -- Blew itself up (Explode attack): no EXP / loot
 	NextAttackTime: number,
 	AlertUntil: number, -- Just spotted its target: stands still until this time
 	Element: string, -- Its attack's element (EnemyData, or forced by the run's Stone Tablet mods)
@@ -89,6 +97,7 @@ local enemies: { [Model]: EnemyState } = {}
 local spawnPointsCache: { SpawnPoint } = {}
 local random = Random.new()
 local healthMultiplier = 1 -- From the player count, see rescaleEnemyHealth
+local projectileCount = 0 -- Ids for enemy shots (clients match "EnemyProjectileEnd" to the shot)
 
 -- ==========================================
 -- 1. HELPERS
@@ -169,7 +178,8 @@ local function defaultSpawnPoints(): { SpawnPoint }
 	end
 
 	local points: { SpawnPoint } = {}
-	-- Two packs of 3 Grunts, then the Brute boss further away (up-screen from the isometric camera)
+	-- Two groups of 3 Grunt markers (each marker becomes a mixed pack, EnemyData Pack), then the Brute boss
+	-- further away (up-screen from the isometric camera)
 	for _, packCenter in ipairs({ Vector3.new(-35, 0, -10), Vector3.new(-10, 0, -40) }) do
 		for i = 1, 3 do
 			local angle = (i / 3) * math.pi * 2
@@ -313,6 +323,7 @@ local function spawnEnemy(point: SpawnPoint)
 		Returning = false,
 		Attacking = false,
 		Dead = false,
+		Exploded = false,
 		NextAttackTime = 0,
 		AlertUntil = 0,
 		-- Tablet mods like "Monster attacks deal Cold damage" override the enemy's own element (two mods: random)
@@ -336,6 +347,58 @@ local function spawnEnemy(point: SpawnPoint)
 	end)
 end
 
+-- The enemy types of one pack (EnemyData Pack: Size picks by Weights)
+local function rollPack(pack: { Size: number, Weights: { [string]: number } }): { string }
+	local typeIds = {}
+	local total = 0
+	for typeId, weight in pairs(pack.Weights) do
+		if EnemyData[typeId] and weight > 0 then
+			table.insert(typeIds, typeId)
+			total += weight
+		end
+	end
+	table.sort(typeIds)
+	local members = {}
+	for memberIndex = 1, pack.Size do
+		local roll = random:NextNumber() * total
+		for _, typeId in ipairs(typeIds) do
+			roll -= pack.Weights[typeId]
+			if roll <= 0 then
+				table.insert(members, typeId)
+				break
+			end
+		end
+		if #members < memberIndex then
+			table.insert(members, typeIds[#typeIds]) -- Rounding left the roll just above 0
+		end
+	end
+	return members
+end
+
+-- Every marker: its enemy, or its whole pack spread around it. Non-boss enemies stop at MAX_ENEMIES
+local function spawnAll()
+	local count = 0
+	for _, point in ipairs(spawnPointsCache) do
+		local pack = EnemyData[point.TypeId].Pack
+		local members = if pack then rollPack(pack) else { point.TypeId }
+		for index, typeId in ipairs(members) do
+			local isBoss = EnemyData[typeId].IsBoss
+			if not isBoss and count >= MAX_ENEMIES then
+				continue
+			end
+			local offset = Vector3.zero
+			if #members > 1 then
+				local angle = (index / #members) * math.pi * 2 + random:NextNumber(-0.4, 0.4)
+				offset = Vector3.new(math.cos(angle), 0, math.sin(angle)) * PACK_SPREAD
+			end
+			spawnEnemy({ TypeId = typeId, Position = point.Position + offset })
+			if not isBoss then
+				count += 1
+			end
+		end
+	end
+end
+
 function onDeath(state: EnemyState, _point: SpawnPoint)
 	if state.Dead then
 		return
@@ -344,16 +407,20 @@ function onDeath(state: EnemyState, _point: SpawnPoint)
 	local data = state.Data
 	local model = state.Model
 
-	-- EXP and flask charges go to everyone who hit it (co-op: nobody loses out on the last hit)
-	local flaskCharge = if data.IsBoss then PlayerStats.FLASK_CHARGE_PER_BOSS_KILL else PlayerStats.FLASK_CHARGE_PER_KILL
-	for player in pairs(state.Contributors) do
-		if player.Parent then
-			PlayerData.addExp(player, data.Exp)
-			PlayerResources.addFlaskCharges(player, flaskCharge)
+	-- EXP and flask charges go to everyone who hit it (co-op: nobody loses out on the last hit).
+	-- A Bomber that blew itself up gives nothing. The best Gem Beetle among them adds loot (LootQuantity)
+	if not state.Exploded then
+		local flaskCharge = if data.IsBoss then PlayerStats.FLASK_CHARGE_PER_BOSS_KILL else PlayerStats.FLASK_CHARGE_PER_KILL
+		local lootBonus = 0
+		for player in pairs(state.Contributors) do
+			if player.Parent then
+				PlayerData.addExp(player, data.Exp)
+				PlayerResources.addFlaskCharges(player, flaskCharge)
+				lootBonus = math.max(lootBonus, PlayerData.getStats(player).LootQuantity / 100)
+			end
 		end
+		Loot.rollDrops(data.Drops, findGround(state.Root.Position), DungeonRun.getCurrent(), data.IsBoss, lootBonus)
 	end
-
-	Loot.rollDrops(data.Drops, findGround(state.Root.Position), DungeonRun.getCurrent(), data.IsBoss)
 
 	if data.IsBoss then
 		PlayerData.notify(nil, ("Dungeon Cleared! Defeated %s (Use portal to return to Lobby)"):format(data.DisplayName), BOSS_CLEAR_COLOR)
@@ -430,6 +497,49 @@ local function stopAndFace(state: EnemyState, position: Vector3)
 	end
 end
 
+-- Projectile attack (Stone Slinger): a shot flies along a flat line from the enemy, the server moves it in steps and
+-- hits the first player within Width of the line (players mid-dodge are passed through), stops at walls
+local function fireProjectile(state: EnemyState, direction: Vector3, damage: number)
+	local attack = state.Data.Attack
+	local origin = state.Root.Position
+	local speed = attack.Speed or 40
+	local width = attack.Width or 2
+	local maxDistance = attack.Range + PROJECTILE_EXTRA_RANGE
+	local wall = workspace:Raycast(origin, direction * maxDistance, makeMapParams())
+	local distance = if wall then (wall.Position - origin).Magnitude else maxDistance
+	local element = state.Element
+
+	projectileCount += 1
+	local id = projectileCount
+	combatRemote:FireAllClients("EnemyProjectile", id, origin, direction, speed, distance, element)
+
+	task.spawn(function()
+		local traveled = 0
+		local lastTime = os.clock()
+		while traveled < distance do
+			task.wait(PROJECTILE_STEP)
+			local now = os.clock()
+			local from = traveled
+			traveled = math.min(traveled + speed * (now - lastTime), distance)
+			lastTime = now
+			for _, player in ipairs(Players:GetPlayers()) do
+				local character = player.Character
+				local playerRoot = getAliveRoot(character)
+				if character and playerRoot and (character:GetAttribute("InvulnerableUntil") or 0) <= now then
+					local offset = Vector3.new(playerRoot.Position.X - origin.X, 0, playerRoot.Position.Z - origin.Z)
+					local along = offset:Dot(direction)
+					local side = (offset - direction * along).Magnitude
+					if along >= from - 1 and along <= traveled + 1 and side <= width then
+						damagePlayer(character, damage, element)
+						combatRemote:FireAllClients("EnemyProjectileEnd", id)
+						return
+					end
+				end
+			end
+		end
+	end)
+end
+
 local function startAttack(state: EnemyState, target: Model, targetRoot: BasePart)
 	local attack = state.Data.Attack
 	local root = state.Root
@@ -439,10 +549,17 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 	-- Stop and face the target during the windup
 	stopAndFace(state, targetRoot.Position)
 
-	-- Slam hits a circle around the enemy, Melee hits the target if it's still in reach
+	-- Slam / Explode hit a circle around the enemy, Melee hits the target if it's still in reach,
+	-- Projectile aims now (a red line shows where) and throws along that line after the windup
 	local ground = root.Position - Vector3.new(0, state.Humanoid.HipHeight + root.Size.Y / 2, 0)
-	local center = if attack.Kind == "Slam" then ground else targetRoot.Position
-	local radius = attack.Radius or 0
+	local isCircle = attack.Kind == "Slam" or attack.Kind == "Explode"
+	local flatAim = Vector3.new(targetRoot.Position.X - root.Position.X, 0, targetRoot.Position.Z - root.Position.Z)
+	local direction = if flatAim.Magnitude > 0.1 then flatAim.Unit else Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z).Unit
+	local center = if isCircle
+		then ground
+		elseif attack.Kind == "Projectile" then ground + direction * (attack.Range + PROJECTILE_EXTRA_RANGE)
+		else targetRoot.Position
+	local radius = if attack.Kind == "Projectile" then attack.Width or 2 else attack.Radius or 0
 	combatRemote:FireAllClients("EnemyAttack", state.Model, attack.Kind, center, radius, attack.Windup)
 
 	task.delay(attack.Windup, function()
@@ -454,13 +571,21 @@ local function startAttack(state: EnemyState, target: Model, targetRoot: BasePar
 
 		-- Stone Tablet run: monsters hit harder
 		local damage = math.round(random:NextInteger(attack.MinDamage, attack.MaxDamage) * DungeonRun.getCurrent().Damage)
-		if attack.Kind == "Slam" then
+		if attack.Kind == "Projectile" then
+			fireProjectile(state, direction, damage)
+		elseif isCircle then
 			for _, player in ipairs(Players:GetPlayers()) do
 				local character = player.Character
 				local playerRoot = getAliveRoot(character)
 				if character and playerRoot and flatDistance(playerRoot.Position, ground) <= radius then
 					damagePlayer(character, damage, state.Element)
 				end
+			end
+			-- Rubble Bomber: blows itself up (fiery burst, no EXP or loot for anyone)
+			if attack.Kind == "Explode" then
+				combatRemote:FireAllClients("CorpseExplosion", ground, radius)
+				state.Exploded = true
+				state.Humanoid.Health = 0
 			end
 		else
 			local currentRoot = getAliveRoot(target)
@@ -620,7 +745,12 @@ local function updateEnemy(state: EnemyState, now: number, mapParams: RaycastPar
 		return -- Still reacting to spotting the target
 	end
 
-	if flatDistance(targetRoot.Position, root.Position) <= data.Attack.Range then
+	-- Ranged attackers also need a clear line to the target, otherwise they keep walking closer
+	local inRange = flatDistance(targetRoot.Position, root.Position) <= data.Attack.Range
+	if inRange and data.Attack.Kind == "Projectile" and not canSee(state, targetRoot, mapParams) then
+		inRange = false
+	end
+	if inRange then
 		if now >= state.NextAttackTime then
 			startAttack(state, target, targetRoot)
 		else
@@ -664,9 +794,7 @@ function EnemyService.resetDungeon(): TabletData.Effects
 	if #spawnPointsCache == 0 then
 		spawnPointsCache = collectSpawnPoints()
 	end
-	for _, point in ipairs(spawnPointsCache) do
-		spawnEnemy(point)
-	end
+	spawnAll()
 	return run
 end
 
@@ -814,9 +942,7 @@ function EnemyService.start()
 	end)
 
 	spawnPointsCache = collectSpawnPoints()
-	for _, point in ipairs(spawnPointsCache) do
-		spawnEnemy(point)
-	end
+	spawnAll()
 
 	setupDungeonPortals()
 

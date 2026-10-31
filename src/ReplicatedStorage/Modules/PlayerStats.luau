@@ -20,6 +20,8 @@ export type Stats = {
 	FireResistance: number,
 	ColdResistance: number,
 	LightningResistance: number,
+	ManaRegen: number, -- % faster mana regeneration (Stone Spirits)
+	LootQuantity: number, -- % more drops from monsters this player helped kill (Stone Spirits)
 }
 
 local PlayerStats = {}
@@ -65,7 +67,7 @@ function PlayerStats.expToNext(level: number): number
 	return 60 + level * 40
 end
 
--- bonus = extra stats on top, e.g. the passive tree (PassiveData.getStats)
+-- bonus = extra stats on top: the passive tree (PassiveData.getStats) + Stone Spirits (SpiritData.getStats)
 function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item }, bonus: { [string]: number }?): Stats
 	local stats: { [string]: number } = {
 		MaxHealth = PlayerStats.BASE_MAX_HEALTH + (level - 1) * PlayerStats.MAX_HEALTH_PER_LEVEL,
@@ -80,6 +82,8 @@ function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item 
 		FireResistance = 0,
 		ColdResistance = 0,
 		LightningResistance = 0,
+		ManaRegen = 0,
+		LootQuantity = 0,
 	}
 	for _, item in pairs(equipped) do
 		for stat, value in pairs(ItemData.getStats(item)) do

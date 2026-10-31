@@ -172,8 +172,10 @@ local function update(player: Player, state: State, deltaTime: number, now: numb
 	end
 	local stats = PlayerData.getStats(player)
 
-	-- Also pulls the values down when gear that gave max mana / energy shield is removed
-	state.Mana = math.min(state.Mana + stats.MaxMana * PlayerStats.MANA_REGEN_PERCENT * deltaTime, stats.MaxMana)
+	-- Also pulls the values down when gear that gave max mana / energy shield is removed.
+	-- ManaRegen (Stone Spirits) = % faster regeneration
+	local manaRegen = stats.MaxMana * PlayerStats.MANA_REGEN_PERCENT * (1 + stats.ManaRegen / 100)
+	state.Mana = math.min(state.Mana + manaRegen * deltaTime, stats.MaxMana)
 
 	if now - state.LastHitTime >= PlayerStats.ENERGY_SHIELD_RECHARGE_DELAY then
 		local rate = PlayerStats.ENERGY_SHIELD_RECHARGE_PERCENT * (1 + stats.EnergyShieldRecharge / 100)

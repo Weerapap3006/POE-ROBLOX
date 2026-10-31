@@ -49,6 +49,9 @@ local TabletData = luau.load(tabletDataBytecode, { environment = mockEnv })()
 local skillDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/SkillData.luau"))
 local SkillData = luau.load(skillDataBytecode, { environment = mockEnv })()
 
+local spiritDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/SpiritData.luau"))
+local SpiritData = luau.load(spiritDataBytecode, { environment = mockEnv })()
+
 -- Setup script mock for ItemData
 local itemDataScript = {
 	Parent = {
@@ -59,6 +62,8 @@ local itemDataScript = {
 				return "TabletData"
 			elseif name == "SkillData" then
 				return "SkillData"
+			elseif name == "SpiritData" then
+				return "SpiritData"
 			end
 			error("Child not found: " .. tostring(name))
 		end,
@@ -77,6 +82,8 @@ itemDataEnv.require = function(target)
 		return TabletData
 	elseif target == "SkillData" then
 		return SkillData
+	elseif target == "SpiritData" then
+		return SpiritData
 	end
 	return require(target)
 end
@@ -158,6 +165,12 @@ lootEnv.game = {
 	GetService = function(_self, name)
 		if name == "Debris" then
 			return { AddItem = function() end }
+		elseif name == "Players" then
+			return {
+				GetPlayers = function()
+					return {}
+				end,
+			}
 		elseif name == "HttpService" then
 			return {
 				GenerateGUID = function()
@@ -193,6 +206,8 @@ lootEnv.require = function(target)
 		return RuneData
 	elseif target == "SkillData" then
 		return SkillData
+	elseif target == "SpiritData" then
+		return SpiritData
 	elseif target == "StoneData" then
 		return StoneData
 	elseif target == "TabletData" then
@@ -311,10 +326,23 @@ test("Loot.rollItem generates gear with valid base and rarity", function()
 	local base = ItemData.Bases[item.Base]
 	assertEq(base ~= nil, true, "Base must exist in ItemData.Bases")
 	assertEq(base.Slot ~= "Rune" and base.Slot ~= "Tablet", true, "Gear roll never rolls Runes or Tablets")
-	-- Many rolls: a Skill Stone must never come out of the gear roll either
+	-- Many rolls: Skill Stones and Stone Spirits must never come out of the gear roll either
 	for _ = 1, 50 do
 		local rolled = Loot.rollItem("Normal")
-		assertEq(ItemData.Bases[rolled.Base].Slot ~= "Skill", true, "Gear roll never rolls Skill Stones")
+		local slot = ItemData.Bases[rolled.Base].Slot
+		assertEq(slot ~= "Skill" and slot ~= "Spirit", true, "Gear roll never rolls Skill Stones or spirits")
+		assertEq(ItemData.isAutoPickup(rolled), false, "Gear always waits for the Pick Up prompt")
+	end
+end)
+
+test("Loot.rollSpirit generates a valid Stone Spirit", function()
+	for _ = 1, 20 do
+		local spirit = Loot.rollSpirit()
+		assertEq(spirit.Rarity, "Spirit", "Spirit rarity should be Spirit")
+		local spiritId = ItemData.getSpiritId(spirit)
+		assertEq(spiritId ~= nil and SpiritData.Spirits[spiritId] ~= nil, true, "Item should resolve to a real spirit")
+		assertEq(ItemData.isAutoPickup(spirit), true, "Spirits pick themselves up")
+		assertEq(typeof(StoneData.whyNot("Ascension", spirit)), "string", "Crafting stones don't work on spirits")
 	end
 end)
 

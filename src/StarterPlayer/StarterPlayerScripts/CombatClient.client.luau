@@ -64,6 +64,7 @@ local slotSkills: { string } = {} -- Skill id in each skill bar slot, "" = empty
 local comboStep = 1
 local currentMouseWorldPos = Vector3.zero
 local dodgeEndTime = 0 -- Dashing until this time: no attacks, no turning toward the mouse
+local enemyShots: { [number]: BasePart } = {} -- Stone Slinger shots in flight, by the server's shot id
 local isTouchOnly = Ui.isTouchOnly()
 
 -- Raycast parameters (ignore player's own character and VFX)
@@ -642,7 +643,36 @@ end
 -- 4. ENEMY ATTACK TELEGRAPHS (warning shown during the windup so players can dodge)
 -- ==========================================
 local function playEnemyAttack(enemyModel: Model, kind: string, center: Vector3, radius: number, windup: number)
-	if kind == "Slam" then
+	if kind == "Projectile" then
+		-- Ranged: a red strip on the ground along the line the shot will fly (center = where it ends, radius = width)
+		local enemyRoot = enemyModel:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if not enemyRoot then
+			return
+		end
+		local start = Vector3.new(enemyRoot.Position.X, center.Y + 0.15, enemyRoot.Position.Z)
+		local finish = Vector3.new(center.X, center.Y + 0.15, center.Z)
+		local length = (finish - start).Magnitude
+		if length < 0.1 then
+			return
+		end
+		local strip = Instance.new("Part")
+		strip.Name = "EnemyAimVFX"
+		strip.Anchored = true
+		strip.CanCollide = false
+		strip.CanQuery = false
+		strip.CanTouch = false
+		strip.CastShadow = false
+		strip.Material = Enum.Material.Neon
+		strip.Color = ENEMY_ATTACK_COLOR
+		strip.Transparency = 0.6
+		strip.Size = Vector3.new(radius * 2, 0.1, length)
+		strip.CFrame = CFrame.lookAt(start, finish) * CFrame.new(0, 0, -length / 2)
+		strip.Parent = workspace
+		TweenService:Create(strip, TweenInfo.new(windup, Enum.EasingStyle.Linear), { Transparency = 0.3 }):Play()
+		Debris:AddItem(strip, windup)
+		return
+	end
+	if kind == "Slam" or kind == "Explode" then
 		-- Red circle on the ground that fills up until the slam lands
 		local area = makeDisc(center + Vector3.new(0, 0.1, 0), radius * 2, ENEMY_ATTACK_COLOR, 0.75)
 		local fill = makeDisc(center + Vector3.new(0, 0.15, 0), 0.5, ENEMY_ATTACK_COLOR, 0.45)
@@ -1287,6 +1317,40 @@ combatRemote.OnClientEvent:Connect(function(action: string, ...)
 				Transparency = 1,
 			}):Play()
 			Debris:AddItem(ring, 0.4)
+		end
+	elseif action == "EnemyProjectile" then
+		-- Stone Slinger shot: a stone flying along its line to the wall / max range (the server says if it hits sooner)
+		local id: number, origin: Vector3, direction: Vector3, speed: number, distance: number, element: string = ...
+		local stone = Instance.new("Part")
+		stone.Name = "EnemyShotVFX"
+		stone.Shape = Enum.PartType.Ball
+		stone.Anchored = true
+		stone.CanCollide = false
+		stone.CanQuery = false
+		stone.CanTouch = false
+		stone.CastShadow = false
+		stone.Material = Enum.Material.Neon
+		stone.Color = Elements.Colors[element] or Color3.fromRGB(200, 170, 130)
+		stone.Size = Vector3.one * 0.9
+		stone.CFrame = CFrame.new(origin)
+		stone.Parent = workspace
+		local travelTime = math.max(distance, 0.1) / speed
+		TweenService:Create(stone, TweenInfo.new(travelTime, Enum.EasingStyle.Linear), {
+			CFrame = CFrame.new(origin + direction * distance),
+		}):Play()
+		Debris:AddItem(stone, travelTime + 0.05)
+		enemyShots[id] = stone
+		task.delay(travelTime + 0.1, function()
+			enemyShots[id] = nil
+		end)
+	elseif action == "EnemyProjectileEnd" then
+		-- The shot hit a player: it stops there with a small burst
+		local id: number = ...
+		local stone = enemyShots[id]
+		enemyShots[id] = nil
+		if stone and stone.Parent then
+			spawnBurst(stone.Position, 2.5, stone.Color)
+			stone:Destroy()
 		end
 	elseif action == "HeroBlock" then
 		-- A Wardstone orb took an enemy hit for this player
