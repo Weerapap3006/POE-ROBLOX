@@ -4,6 +4,7 @@
 -- ==========================================
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
+local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -15,6 +16,8 @@ local RuneData = require(modulesFolder:WaitForChild("RuneData"))
 local StoneData = require(modulesFolder:WaitForChild("StoneData"))
 local TabletData = require(modulesFolder:WaitForChild("TabletData"))
 local PassiveData = require(modulesFolder:WaitForChild("PassiveData"))
+local HeroData = require(modulesFolder:WaitForChild("HeroData"))
+local SpiritData = require(modulesFolder:WaitForChild("SpiritData"))
 
 local Crafting = require(script.Parent:WaitForChild("Crafting"))
 local DungeonRun = require(script.Parent:WaitForChild("DungeonRun"))
@@ -41,9 +44,15 @@ export type Profile = {
 	Exp: number,
 	Inventory: { ItemData.Item },
 	Equipped: { [string]: ItemData.Item },
+	-- Skill bar: a SkillData id per slot (PlayerStats.SKILL_BAR_SLOTS long, "" = empty slot, no skill twice).
+	-- A Skill Stone put on the bar becomes just its skill id; taking it off makes a new Skill Stone item
+	SkillBar: { string },
 	SkillRunes: { [string]: { ItemData.Item } }, -- Stone runes socketed in each skill (in socket order, no gaps)
+	-- Stone Spirits: a SpiritData id per slot (SpiritData.SLOTS long, "" = empty, no spirit twice), like the skill bar
+	Spirits: { string },
 	Stones: { [string]: number }, -- Crafting stones owned, per StoneData id
 	Class: string?, -- PassiveData.Classes id (nil = not chosen yet, the tree window asks)
+	HeroVariant: string?, -- Hero path of the class (HeroData Variants, from HeroData.VARIANT_LEVEL; nil = none yet)
 	Passives: { string }, -- Allocated passive tree nodes (not counting the class's free Start node)
 	Stats: PlayerStats.Stats,
 	-- False when loading failed: saving would overwrite the player's real data with this empty profile
@@ -54,6 +63,7 @@ local PlayerData = {}
 
 local profiles: { [Player]: Profile } = {}
 local pendingSaves = 0
+local heroChangedListeners: { (Player) -> () } = {} -- HeroService resets the mechanic when class / path change
 
 -- Fails in a place that was never published (e.g. a local game.rbxl copy): the game still runs, nothing is saved
 local dataStore: DataStore? = nil
@@ -152,7 +162,7 @@ local function sanitizeSkillRunes(raw: any): { [string]: { ItemData.Item } }
 			for _, rawItem in ipairs(list) do
 				local item = sanitizeItem(rawItem)
 				local runeId = if item then ItemData.getRuneId(item) else nil
-				if item and runeId and not seen[runeId] and RuneData.fits(runeId, skill.Shape) and #socketed < skill.Sockets then
+				if item and runeId and not seen[runeId] and RuneData.fits(runeId, skill) and #socketed < skill.Sockets then
 					seen[runeId] = true
 					table.insert(socketed, item)
 				end
@@ -163,13 +173,66 @@ local function sanitizeSkillRunes(raw: any): { [string]: { ItemData.Item } }
 	return result
 end
 
+-- Skill ids that still exist, each once. raw = nil (new player or a save from before the skill bar):
+-- the starting skills
+local function sanitizeSkillBar(raw: any): { string }
+	local bar = {}
+	local seen = {}
+	for slot = 1, PlayerStats.SKILL_BAR_SLOTS do
+		local skillId = if type(raw) == "table" then raw[slot] else PlayerStats.STARTING_SKILLS[slot]
+		if type(skillId) == "string" and SkillData[skillId] and not seen[skillId] then
+			seen[skillId] = true
+			bar[slot] = skillId
+		else
+			bar[slot] = ""
+		end
+	end
+	return bar
+end
+
+local function makeSkillStone(skillId: string): ItemData.Item
+	return {
+		Id = HttpService:GenerateGUID(false),
+		Base = ItemData.getSkillStoneBase(skillId),
+		Rarity = "Skill",
+		Affixes = {},
+	}
+end
+
+-- Spirit ids that still exist, each once ("" = empty slot). Nobody starts with a spirit
+local function sanitizeSpirits(raw: any): { string }
+	local slots = {}
+	local seen = {}
+	for slot = 1, SpiritData.SLOTS do
+		local spiritId = if type(raw) == "table" then raw[slot] else nil
+		if type(spiritId) == "string" and SpiritData.Spirits[spiritId] and not seen[spiritId] then
+			seen[spiritId] = true
+			slots[slot] = spiritId
+		else
+			slots[slot] = ""
+		end
+	end
+	return slots
+end
+
+local function makeSpiritStone(spiritId: string): ItemData.Item
+	return {
+		Id = HttpService:GenerateGUID(false),
+		Base = SpiritData.getBaseId(spiritId),
+		Rarity = "Spirit",
+		Affixes = {},
+	}
+end
+
 local function buildProfile(data: any, canSave: boolean): Profile
 	local profile: Profile = {
 		Level = 1,
 		Exp = 0,
 		Inventory = {},
 		Equipped = {},
+		SkillBar = sanitizeSkillBar(nil),
 		SkillRunes = sanitizeSkillRunes(nil),
+		Spirits = sanitizeSpirits(nil),
 		Stones = sanitizeStones(nil),
 		Class = nil,
 		Passives = {},
@@ -179,6 +242,8 @@ local function buildProfile(data: any, canSave: boolean): Profile
 	if type(data) ~= "table" then
 		return profile -- New player (or load failed)
 	end
+	profile.SkillBar = sanitizeSkillBar(data.SkillBar)
+	profile.Spirits = sanitizeSpirits(data.Spirits)
 	profile.SkillRunes = sanitizeSkillRunes(data.SkillRunes)
 	profile.Stones = sanitizeStones(data.Stones)
 
@@ -192,6 +257,9 @@ local function buildProfile(data: any, canSave: boolean): Profile
 	if type(data.Class) == "string" and PassiveData.Classes[data.Class] then
 		profile.Class = data.Class
 		profile.Passives = PassiveData.sanitize(data.Class, data.Passives, PassiveData.getPoints(profile.Level))
+		if type(data.HeroVariant) == "string" and HeroData.canChoose(data.Class, data.HeroVariant, profile.Level) then
+			profile.HeroVariant = data.HeroVariant
+		end
 	end
 	if type(data.Inventory) == "table" then
 		for _, raw in ipairs(data.Inventory) do
@@ -240,9 +308,12 @@ local function saveProfile(player: Player, profile: Profile): boolean
 		Exp = profile.Exp,
 		Inventory = profile.Inventory,
 		Equipped = profile.Equipped,
+		SkillBar = profile.SkillBar,
 		SkillRunes = profile.SkillRunes,
+		Spirits = profile.Spirits,
 		Stones = profile.Stones,
 		Class = profile.Class,
+		HeroVariant = profile.HeroVariant,
 		Passives = profile.Passives,
 	}
 
@@ -281,7 +352,12 @@ local function applyToCharacter(player: Player, profile: Profile, healToFull: bo
 end
 
 local function refreshStats(player: Player, profile: Profile, healToFull: boolean)
-	profile.Stats = PlayerStats.compute(profile.Level, profile.Equipped, PassiveData.getStats(profile.Class, profile.Passives))
+	-- Passive tree + Stone Spirits in their slots come on top of level and gear
+	local bonus = PassiveData.getStats(profile.Class, profile.Passives)
+	for stat, value in pairs(SpiritData.getStats(profile.Spirits)) do
+		bonus[stat] = (bonus[stat] or 0) + value
+	end
+	profile.Stats = PlayerStats.compute(profile.Level, profile.Equipped, bonus)
 
 	-- Attributes replicate to every client automatically: HudClient / InventoryClient / CombatClient read these
 	player:SetAttribute("Level", profile.Level)
@@ -307,12 +383,24 @@ local function sync(player: Player, profile: Profile)
 	inventoryRemote:FireClient(player, "Sync", {
 		Inventory = profile.Inventory,
 		Equipped = profile.Equipped,
+		SkillBar = profile.SkillBar,
 		SkillRunes = profile.SkillRunes,
+		Spirits = profile.Spirits,
 		Stones = profile.Stones,
 		Class = profile.Class, -- Passive tree (PassiveTreeClient listens to this Sync too)
+		HeroVariant = profile.HeroVariant,
 		Passives = profile.Passives,
 		Capacity = INVENTORY_CAPACITY,
 	})
+
+	-- Class + hero path for HeroClient's meter (and anyone drawing this player's orbs)
+	player:SetAttribute("HeroClass", profile.Class or "")
+	player:SetAttribute("HeroVariant", profile.HeroVariant or "")
+
+	-- The skill bar as "BasicSlash,SpinSlash,," (one entry per slot, empty = no skill) for CombatClient's buttons
+	player:SetAttribute("SkillBar", table.concat(profile.SkillBar, ","))
+	-- Spirit slots the same way: everyone's SpiritClient draws this player's spirits following them
+	player:SetAttribute("Spirits", table.concat(profile.Spirits, ","))
 
 	-- Socketed runes also go out as "SkillRunes_<skillId>" = "Reach,Ember" attributes, so every client
 	-- can draw this player's skills with them (CombatClient)
@@ -349,6 +437,12 @@ local function equip(player: Player, profile: Profile, itemId: string)
 		return
 	elseif base.Slot == "Tablet" then
 		PlayerData.notify(player, "Stone Tablets go into the dungeon portal (Place in Portal)", WARNING_COLOR)
+		return
+	elseif base.Slot == "Skill" then
+		PlayerData.notify(player, "Skill Stones go on the skill bar (bottom of the inventory)", WARNING_COLOR)
+		return
+	elseif base.Slot == "Spirit" then
+		PlayerData.notify(player, "Stone Spirits go in the spirit slots (next to your gear)", WARNING_COLOR)
 		return
 	end
 	local slot = ItemData.getTargetSlot(base.Slot, profile.Equipped)
@@ -405,8 +499,8 @@ local function discard(profile: Profile, itemId: string)
 	end
 end
 
--- Moves a rune from the inventory into a skill's next free socket.
--- skillId = nil: the first skill (A-Z) it fits that has room (Shift+Click / Auto-Socket)
+-- Moves a rune from the inventory into the next free socket of a skill on the skill bar.
+-- skillId = nil: the first skill on the bar (slot order) it fits that has room (Shift+Click / Auto-Socket)
 local function socketRune(player: Player, profile: Profile, itemId: string, skillId: string?)
 	local index = findInInventory(profile, itemId)
 	local item = if index then profile.Inventory[index] else nil
@@ -421,7 +515,9 @@ local function socketRune(player: Player, profile: Profile, itemId: string, skil
 		local socketed = profile.SkillRunes[id]
 		if not skill or not socketed then
 			return "Unknown skill"
-		elseif not RuneData.fits(runeId, skill.Shape) then
+		elseif not table.find(profile.SkillBar, id) then
+			return skill.Name .. " is not on your skill bar"
+		elseif not RuneData.fits(runeId, skill) then
 			return ("%s doesn't fit %s"):format(ItemData.getName(item), skill.Name)
 		elseif #socketed >= skill.Sockets then
 			return skill.Name .. " has no free socket"
@@ -442,25 +538,107 @@ local function socketRune(player: Player, profile: Profile, itemId: string, skil
 			return
 		end
 	else
-		local skillIds = {}
-		for id in pairs(SkillData) do
-			table.insert(skillIds, id)
-		end
-		table.sort(skillIds)
-		for _, id in ipairs(skillIds) do
-			if not whyNot(id) then
+		for _, id in ipairs(profile.SkillBar) do
+			if id ~= "" and not whyNot(id) then
 				target = id
 				break
 			end
 		end
 		if not target then
-			PlayerData.notify(player, "No skill has a free socket for this rune", WARNING_COLOR)
+			PlayerData.notify(player, "No skill on your skill bar has a free socket for this rune", WARNING_COLOR)
 			return
 		end
 	end
 
 	table.remove(profile.Inventory, index)
 	table.insert(profile.SkillRunes[target], item)
+end
+
+-- The skill bar and the spirit slots work the same way: a stone item from the bag goes into a slot as just its id,
+-- and taking it out makes a new item. Each kind says where its slots are and how to read / make its items
+type SlotKind = {
+	Slots: (Profile) -> { string },
+	GetId: (ItemData.Item) -> string?,
+	MakeItem: (string) -> ItemData.Item,
+	Name: (string) -> string,
+	AlreadyText: string, -- %s = the name
+	FullText: string,
+}
+
+local SKILL_SLOTS: SlotKind = {
+	Slots = function(profile: Profile)
+		return profile.SkillBar
+	end,
+	GetId = ItemData.getSkillId,
+	MakeItem = makeSkillStone,
+	Name = function(skillId: string)
+		return SkillData[skillId].Name
+	end,
+	AlreadyText = "%s is already on your skill bar",
+	FullText = "Skill bar is full: click a slot to swap it",
+}
+
+local SPIRIT_SLOTS: SlotKind = {
+	Slots = function(profile: Profile)
+		return profile.Spirits
+	end,
+	GetId = ItemData.getSpiritId,
+	MakeItem = makeSpiritStone,
+	Name = function(spiritId: string)
+		return SpiritData.Spirits[spiritId].Name
+	end,
+	AlreadyText = "%s is already in a spirit slot",
+	FullText = "Spirit slots are full: click a slot to swap it",
+}
+
+-- Puts an item from the bag into `slot`, or the first empty slot when slot = nil. Whatever was in that slot goes
+-- back into the bag in the spot the new one left (so a full bag never blocks a swap). Runes stay with their skill
+local function putInSlot(player: Player, profile: Profile, kind: SlotKind, itemId: string, slot: number?)
+	local slots = kind.Slots(profile)
+	local index = findInInventory(profile, itemId)
+	local item = if index then profile.Inventory[index] else nil
+	local id = if item then kind.GetId(item) else nil
+	if not index or not item or not id then
+		return
+	end
+	if table.find(slots, id) then
+		PlayerData.notify(player, kind.AlreadyText:format(kind.Name(id)), WARNING_COLOR)
+		return
+	end
+
+	local target = slot
+	if target == nil then
+		target = table.find(slots, "")
+		if not target then
+			PlayerData.notify(player, kind.FullText, WARNING_COLOR)
+			return
+		end
+	elseif not slots[target] then
+		return -- Not a slot number (also rejects 1.5 / NaN from the client)
+	end
+
+	local previous = slots[target]
+	slots[target] = id
+	if previous ~= "" then
+		profile.Inventory[index] = kind.MakeItem(previous)
+	else
+		table.remove(profile.Inventory, index)
+	end
+end
+
+-- Takes what's in a slot back into the bag as an item
+local function takeFromSlot(player: Player, profile: Profile, kind: SlotKind, slot: number)
+	local slots = kind.Slots(profile)
+	local id = slots[slot]
+	if not id or id == "" then
+		return
+	end
+	if #profile.Inventory >= INVENTORY_CAPACITY then
+		PlayerData.notify(player, "Inventory is full!", WARNING_COLOR)
+		return
+	end
+	slots[slot] = ""
+	table.insert(profile.Inventory, kind.MakeItem(id))
 end
 
 -- Takes a rune out of a skill back into the inventory (sockets after it shift left)
@@ -535,8 +713,23 @@ local function chooseClass(player: Player, profile: Profile, classId: string)
 		return
 	end
 	profile.Class = classId
+	profile.HeroVariant = nil -- Paths belong to a class
 	profile.Passives = {}
 	PlayerData.notify(player, "You are now a " .. class.Name, class.Color)
+end
+
+-- Hero path of the player's class (HeroData), from HeroData.VARIANT_LEVEL. Free to switch for now (testing)
+local function chooseHeroPath(player: Player, profile: Profile, variantId: string)
+	local hero = HeroData.get(profile.Class)
+	if not hero or not hero.Variants[variantId] then
+		return
+	end
+	if profile.Level < HeroData.VARIANT_LEVEL then
+		PlayerData.notify(player, ("Hero paths unlock at level %d"):format(HeroData.VARIANT_LEVEL), WARNING_COLOR)
+		return
+	end
+	profile.HeroVariant = variantId
+	PlayerData.notify(player, ("%s path: %s"):format(hero.Mechanic, hero.Variants[variantId].Name), hero.Color)
 end
 
 -- One point into a node that links to the tree you already have (PassiveData.whyNot, same as the window)
@@ -569,12 +762,34 @@ local function onInventoryRequest(player: Player, action: any, arg: any, arg2: a
 		socketRune(player, profile, arg, arg2)
 	elseif action == "Unsocket" and type(arg) == "string" and type(arg2) == "number" then
 		unsocketRune(player, profile, arg, arg2)
+	elseif action == "SetSkill" and type(arg) == "string" and (arg2 == nil or type(arg2) == "number") then
+		putInSlot(player, profile, SKILL_SLOTS, arg, arg2)
+	elseif action == "ClearSkill" and type(arg) == "number" then
+		takeFromSlot(player, profile, SKILL_SLOTS, arg)
+	elseif action == "SetSpirit" and type(arg) == "string" and (arg2 == nil or type(arg2) == "number") then
+		putInSlot(player, profile, SPIRIT_SLOTS, arg, arg2)
+	elseif action == "ClearSpirit" and type(arg) == "number" then
+		takeFromSlot(player, profile, SPIRIT_SLOTS, arg)
 	elseif action == "Craft" and type(arg) == "string" and type(arg2) == "string" then
 		craft(player, profile, arg, arg2)
 	elseif action == "PlaceTablet" and type(arg) == "string" then
 		placeTablet(player, profile, arg)
 	elseif action == "ChooseClass" and type(arg) == "string" then
+		local before = profile.Class
 		chooseClass(player, profile, arg)
+		if profile.Class ~= before then
+			for _, listener in ipairs(heroChangedListeners) do
+				task.spawn(listener, player)
+			end
+		end
+	elseif action == "ChooseHeroPath" and type(arg) == "string" then
+		local before = profile.HeroVariant
+		chooseHeroPath(player, profile, arg)
+		if profile.HeroVariant ~= before then
+			for _, listener in ipairs(heroChangedListeners) do
+				task.spawn(listener, player)
+			end
+		end
 	elseif action == "AllocatePassive" and type(arg) == "string" then
 		allocatePassive(player, profile, arg)
 	elseif action == "ResetPassives" then
@@ -593,6 +808,26 @@ end
 function PlayerData.getStats(player: Player): PlayerStats.Stats
 	local profile = profiles[player]
 	return if profile then profile.Stats else PlayerStats.compute(1, {})
+end
+
+-- The player's class and hero path (HeroService runs the mechanic). Both nil before the data loads
+function PlayerData.getHero(player: Player): (string?, string?)
+	local profile = profiles[player]
+	if not profile then
+		return nil, nil
+	end
+	return profile.Class, profile.HeroVariant
+end
+
+-- callback(player) after the class or hero path changes
+function PlayerData.onHeroChanged(callback: (Player) -> ())
+	table.insert(heroChangedListeners, callback)
+end
+
+-- True when the skill is on the player's skill bar (CombatServer only lets them use those)
+function PlayerData.hasSkill(player: Player, skillId: string): boolean
+	local profile = profiles[player]
+	return profile ~= nil and table.find(profile.SkillBar, skillId) ~= nil
 end
 
 -- Rune ids socketed in a skill as a set, e.g. { Reach = true, Ember = true } (CombatServer applies them)
@@ -653,6 +888,12 @@ function PlayerData.addStone(player: Player, stoneId: string, amount: number): b
 	sync(player, profile)
 	PlayerData.notify(player, "Obtained " .. stone.Name, StoneData.COLOR)
 	return true
+end
+
+-- True when the bag has a free spot (Loot asks before picking an item up by itself, without a message)
+function PlayerData.hasRoom(player: Player): boolean
+	local profile = profiles[player]
+	return profile ~= nil and #profile.Inventory < INVENTORY_CAPACITY
 end
 
 -- Returns false (and tells the player) when the inventory is full

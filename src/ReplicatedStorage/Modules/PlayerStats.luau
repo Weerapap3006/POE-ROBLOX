@@ -20,6 +20,8 @@ export type Stats = {
 	FireResistance: number,
 	ColdResistance: number,
 	LightningResistance: number,
+	ManaRegen: number, -- % faster mana regeneration (Stone Spirits)
+	LootQuantity: number, -- % more drops from monsters this player helped kill (Stone Spirits)
 }
 
 local PlayerStats = {}
@@ -44,6 +46,12 @@ PlayerStats.DODGE_DURATION = 0.36 -- Seconds the dash bursts the character forwa
 PlayerStats.DODGE_DISTANCE = 13 -- Studs covered by one roll
 PlayerStats.DODGE_INVULNERABLE_TIME = 0.4 -- Enemy hits miss for this long after the server gets the roll
 
+-- Skill bar: Skill Stones (ItemData "Skill" .. id) go into these slots. Keys: LMB / RMB / Q / R (CombatClient).
+-- New players (and saves from before the skill bar) start with these skills, empty strings = empty slots
+PlayerStats.SKILL_BAR_SLOTS = 4
+PlayerStats.SKILL_BAR_KEYS = { "LMB", "RMB", "Q", "R" } -- Text on the buttons (the inputs are in CombatClient)
+PlayerStats.STARTING_SKILLS = { "BasicSlash", "SpinSlash", "", "" }
+
 -- Flasks (Life = key 1, Mana = key 2, or the mobile buttons). Charges = uses: full on spawn and at the portals,
 -- kills add more. Each recovers RecoverPercent of max health / mana gradually over Duration seconds,
 -- and can't be drunk again until that ends
@@ -59,7 +67,7 @@ function PlayerStats.expToNext(level: number): number
 	return 60 + level * 40
 end
 
--- bonus = extra stats on top, e.g. the passive tree (PassiveData.getStats)
+-- bonus = extra stats on top: the passive tree (PassiveData.getStats) + Stone Spirits (SpiritData.getStats)
 function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item }, bonus: { [string]: number }?): Stats
 	local stats: { [string]: number } = {
 		MaxHealth = PlayerStats.BASE_MAX_HEALTH + (level - 1) * PlayerStats.MAX_HEALTH_PER_LEVEL,
@@ -74,6 +82,8 @@ function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item 
 		FireResistance = 0,
 		ColdResistance = 0,
 		LightningResistance = 0,
+		ManaRegen = 0,
+		LootQuantity = 0,
 	}
 	for _, item in pairs(equipped) do
 		for stat, value in pairs(ItemData.getStats(item)) do

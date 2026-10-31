@@ -16,6 +16,7 @@ local inventoryRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local PassiveData = require(modulesFolder:WaitForChild("PassiveData"))
 local ItemData = require(modulesFolder:WaitForChild("ItemData"))
+local HeroData = require(modulesFolder:WaitForChild("HeroData"))
 local Ui = require(modulesFolder:WaitForChild("Ui"))
 
 -- ==========================================
@@ -38,11 +39,13 @@ local CAN_TAKE_COLOR = Color3.fromRGB(130, 220, 140)
 -- STATE (class + passives replaced by every "Sync" from the server)
 -- ==========================================
 local classId: string? = nil
+local heroVariant: string? = nil -- Hero path of the class (HeroData), from HeroData.VARIANT_LEVEL
 local passives: { string } = {}
 local synced = false
 local selectedNode: string? = nil
 local confirmingReset = false
 local showingClassPicker = false -- "Change Class" pressed (with no class yet the picker always shows)
+local showingPathPicker = false -- "Hero Path" pressed
 
 local isTouchOnly = Ui.isTouchOnly()
 
@@ -208,8 +211,18 @@ local pointsLabel = Ui.text({
 	Text = "",
 	Parent = side,
 })
+-- Hero mechanic of the class + its path (HeroData)
+local heroLabel = Ui.text({
+	Position = UDim2.fromOffset(0, 50),
+	Size = UDim2.new(1, 0, 0, 18),
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Text = "",
+	Parent = side,
+})
 local nodeName = Ui.text({
-	Position = UDim2.fromOffset(0, 66),
+	Position = UDim2.fromOffset(0, 80),
 	Size = UDim2.new(1, 0, 0, 24),
 	TextSize = 18,
 	TextXAlignment = Enum.TextXAlignment.Left,
@@ -217,7 +230,7 @@ local nodeName = Ui.text({
 	Parent = side,
 })
 local nodeInfo = Ui.text({
-	Position = UDim2.fromOffset(0, 90),
+	Position = UDim2.fromOffset(0, 104),
 	Size = UDim2.new(1, 0, 0, 18),
 	TextSize = 13,
 	TextColor3 = Ui.Colors.TextDim,
@@ -226,8 +239,8 @@ local nodeInfo = Ui.text({
 	Parent = side,
 })
 local nodeLines = Ui.text({
-	Position = UDim2.fromOffset(0, 114),
-	Size = UDim2.new(1, 0, 0, 150),
+	Position = UDim2.fromOffset(0, 126),
+	Size = UDim2.new(1, 0, 0, 138),
 	TextSize = 15,
 	TextWrapped = true,
 	RichText = true,
@@ -245,9 +258,18 @@ local allocateButton = Ui.button({
 }, { Ui.corner(6) })
 local changeClassButton = Ui.button({
 	Position = UDim2.new(0, 0, 1, -84),
-	Size = UDim2.new(1, 0, 0, 36),
+	Size = UDim2.new(0.5, -4, 0, 36),
 	BackgroundColor3 = Color3.fromRGB(60, 66, 84),
 	Text = "Change Class",
+	TextSize = 14,
+	Parent = side,
+}, { Ui.corner(6) })
+local heroPathButton = Ui.button({
+	Position = UDim2.new(0.5, 4, 1, -84),
+	Size = UDim2.new(0.5, -4, 0, 36),
+	BackgroundColor3 = Color3.fromRGB(60, 66, 84),
+	Text = "Hero Path",
+	TextSize = 14,
 	Parent = side,
 }, { Ui.corner(6) })
 local resetButton = Ui.button({
@@ -342,6 +364,33 @@ for order, id in ipairs(PassiveData.ClassOrder) do
 		ZIndex = 13,
 		Parent = card,
 	})
+	-- Hero mechanic (HeroData) and the paths it opens at VARIANT_LEVEL
+	local hero = HeroData.get(id)
+	if hero then
+		local pathNames = {}
+		for _, variantId in ipairs(hero.VariantOrder) do
+			table.insert(pathNames, hero.Variants[variantId].Name)
+		end
+		Ui.text({
+			Position = UDim2.fromOffset(12, 222),
+			Size = UDim2.new(1, -24, 0, 120),
+			Text = string.format(
+				'<font color="#%s">%s</font>\n%s\n<font color="#%s">Lv %d paths: %s</font>',
+				hero.Color:ToHex(),
+				hero.Mechanic,
+				hero.Description,
+				Ui.Colors.TextDim:ToHex(),
+				HeroData.VARIANT_LEVEL,
+				table.concat(pathNames, " / ")
+			),
+			TextSize = 13,
+			RichText = true,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			ZIndex = 13,
+			Parent = card,
+		})
+	end
 	chooseButtons[id] = Ui.button({
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -12),
@@ -351,6 +400,89 @@ for order, id in ipairs(PassiveData.ClassOrder) do
 		ZIndex = 13,
 		Parent = card,
 	}, { Ui.corner(6) })
+end
+
+-- Hero path picker: the two paths of the current class (HeroData), chosen from HeroData.VARIANT_LEVEL
+local pathPicker = Ui.new("Frame", {
+	Name = "HeroPathPicker",
+	Position = UDim2.fromOffset(0, 48),
+	Size = UDim2.new(1, 0, 1, -48),
+	BackgroundColor3 = Ui.Colors.Panel,
+	Active = true,
+	Visible = false,
+	ZIndex = 10,
+	Parent = window,
+}, { Ui.corner(10) })
+local pathTitle = Ui.text({
+	Position = UDim2.fromOffset(16, 4),
+	Size = UDim2.new(1, -120, 0, 30),
+	TextSize = 20,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = "",
+	ZIndex = 11,
+	Parent = pathPicker,
+})
+local pathCloseButton = Ui.button({
+	AnchorPoint = Vector2.new(1, 0),
+	Position = UDim2.new(1, -16, 0, 4),
+	Size = UDim2.fromOffset(90, 30),
+	Text = "Close",
+	ZIndex = 11,
+	Parent = pathPicker,
+}, { Ui.corner(6) })
+local pathCards = Ui.new("Frame", {
+	Position = UDim2.fromOffset(16, 46),
+	Size = UDim2.new(1, -32, 1, -62),
+	BackgroundTransparency = 1,
+	ZIndex = 11,
+	Parent = pathPicker,
+}, {
+	Ui.new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		Padding = UDim.new(0, 20),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
+-- Every class has two paths: two cards, filled in by render() for the current class
+type PathCard = { Name: TextLabel, Description: TextLabel, Button: TextButton, Stroke: UIStroke }
+local pathCardViews: { PathCard } = {}
+for order = 1, 2 do
+	local stroke = Ui.stroke(Ui.Colors.Stroke, 2)
+	local card = Ui.new("Frame", {
+		LayoutOrder = order,
+		Size = UDim2.new(0.5, -10, 1, 0),
+		BackgroundColor3 = Ui.Colors.PanelLight,
+		ZIndex = 12,
+		Parent = pathCards,
+	}, { Ui.corner(8), stroke })
+	local nameLabel = Ui.text({
+		Position = UDim2.fromOffset(12, 12),
+		Size = UDim2.new(1, -24, 0, 32),
+		TextSize = 26,
+		Text = "",
+		ZIndex = 13,
+		Parent = card,
+	})
+	local descriptionLabel = Ui.text({
+		Position = UDim2.fromOffset(12, 56),
+		Size = UDim2.new(1, -24, 0, 200),
+		TextSize = 16,
+		TextWrapped = true,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = "",
+		ZIndex = 13,
+		Parent = card,
+	})
+	local button = Ui.button({
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -12),
+		Size = UDim2.new(1, -24, 0, 40),
+		Text = "",
+		ZIndex = 13,
+		Parent = card,
+	}, { Ui.corner(6) })
+	pathCardViews[order] = { Name = nameLabel, Description = descriptionLabel, Button = button, Stroke = stroke }
 end
 
 Ui.text({
@@ -408,6 +540,19 @@ local function render()
 	classLabel.TextColor3 = if class then class.Color else Ui.Colors.TextDim
 	pointsLabel.Text = string.format("Points left: %d / %d (1 per level)", math.max(pointsLeft, 0), PassiveData.getPoints(getLevel()))
 
+	-- Hero mechanic + path (HeroData)
+	local hero = HeroData.get(classId)
+	local unlocked = getLevel() >= HeroData.VARIANT_LEVEL
+	local variant = if hero and heroVariant then hero.Variants[heroVariant] else nil
+	heroLabel.Text = if not hero
+		then ""
+		elseif variant then hero.Mechanic .. " · " .. variant.Name .. " path"
+		elseif unlocked then hero.Mechanic .. " · choose a path!"
+		else string.format("%s · path at Lv %d", hero.Mechanic, HeroData.VARIANT_LEVEL)
+	heroLabel.TextColor3 = if hero then hero.Color else Ui.Colors.TextDim
+	heroPathButton.Visible = hero ~= nil
+	heroPathButton.Text = if hero and unlocked and not variant then "Hero Path (!)" else "Hero Path"
+
 	local node = if selectedNode then PassiveData.Nodes[selectedNode] else nil
 	if node and selectedNode then
 		local startClass = getStartClass(selectedNode)
@@ -449,12 +594,38 @@ local function render()
 	for id, button in pairs(chooseButtons) do
 		button.Text = if id == classId then "Current Class" else "Choose " .. PassiveData.Classes[id].Name
 	end
+
+	-- Hero path picker: the current class's two paths, locked below HeroData.VARIANT_LEVEL
+	pathPicker.Visible = showingPathPicker and hero ~= nil and not classPicker.Visible
+	if hero then
+		pathTitle.Text = if unlocked
+			then hero.Mechanic .. ": choose a path (free to switch)"
+			else string.format("%s paths unlock at level %d", hero.Mechanic, HeroData.VARIANT_LEVEL)
+		pathTitle.TextColor3 = hero.Color
+		for order, view in ipairs(pathCardViews) do
+			local variantId = hero.VariantOrder[order]
+			local path = hero.Variants[variantId]
+			local current = variantId == heroVariant
+			view.Name.Text = path.Name
+			view.Name.TextColor3 = hero.Color
+			view.Description.Text = path.Description
+			view.Stroke.Color = if current then hero.Color else Ui.Colors.Stroke
+			view.Button.Text = if current
+				then "Current Path"
+				elseif unlocked then "Choose " .. path.Name
+				else string.format("Unlocks at Lv %d", HeroData.VARIANT_LEVEL)
+			view.Button.BackgroundColor3 = if unlocked and not current
+				then hero.Color:Lerp(Ui.Colors.Panel, 0.5)
+				else Ui.Colors.PanelLight
+		end
+	end
 end
 
 local function setOpen(open: boolean)
 	window.Visible = open
 	confirmingReset = false
 	showingClassPicker = false
+	showingPathPicker = false
 	if open then
 		render()
 	end
@@ -493,8 +664,29 @@ end)
 
 changeClassButton.Activated:Connect(function()
 	showingClassPicker = true
+	showingPathPicker = false
 	render()
 end)
+
+heroPathButton.Activated:Connect(function()
+	showingPathPicker = true
+	render()
+end)
+
+pathCloseButton.Activated:Connect(function()
+	showingPathPicker = false
+	render()
+end)
+
+for order, view in ipairs(pathCardViews) do
+	view.Button.Activated:Connect(function()
+		local hero = HeroData.get(classId)
+		local variantId = if hero then hero.VariantOrder[order] else nil
+		if variantId and variantId ~= heroVariant and HeroData.canChoose(classId, variantId, getLevel()) then
+			inventoryRemote:FireServer("ChooseHeroPath", variantId)
+		end
+	end)
+end
 
 cancelButton.Activated:Connect(function()
 	showingClassPicker = false
@@ -540,6 +732,7 @@ inventoryRemote.OnClientEvent:Connect(function(action: string, data: any)
 	local firstSync = not synced
 	synced = true
 	classId = data.Class
+	heroVariant = data.HeroVariant
 	passives = data.Passives or {}
 	-- No class yet (new character or an old save): open straight to the class picker, once
 	if firstSync and classId == nil then

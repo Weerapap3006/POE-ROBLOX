@@ -9,7 +9,7 @@ export type Rune = {
 	Name: string,
 	Description: string, -- Shown in the inventory
 	Shapes: { [string]: boolean }?, -- Skill shapes it fits (SkillData Shape); nil = every skill
-	Convert: string?, -- Element that CONVERT_PERCENT of the skill's physical damage turns into
+	Convert: string?, -- Element that CONVERT_PERCENT of the skill's physical damage turns into (Physical skills only)
 }
 
 local RuneData = {}
@@ -17,12 +17,12 @@ local RuneData = {}
 RuneData.Runes = {
 	Reach = {
 		Name = "Rune of Reach",
-		Description = "+40% skill area",
+		Description = "+40% skill area, projectile range and chain distance",
 	},
 	Split = {
 		Name = "Rune of Splitting",
-		Description = "Also slashes 35° to each side (each enemy is still hit once)",
-		Shapes = { Box = true },
+		Description = "Also slashes or shoots 35° to each side (each enemy is still hit once)",
+		Shapes = { Box = true, Projectile = true },
 	},
 	Ember = {
 		Name = "Ember Rune",
@@ -45,7 +45,7 @@ RuneData.Runes = {
 	},
 } :: { [string]: Rune }
 
-RuneData.AREA_MULTIPLIER = 1.4 -- Reach: hit box width / length / reach and spin radius
+RuneData.AREA_MULTIPLIER = 1.4 -- Reach: hit box width / length / reach, circle radius, projectile range + explosion, chain range
 RuneData.SPLIT_ANGLE = 35 -- Split: degrees between the main slash and each side slash
 RuneData.CONVERT_PERCENT = 0.5 -- Ember / Frost / Storm (several in one skill are scaled down to 100% total)
 RuneData.EXPLODE_PERCENT = 0.15 -- Detonation: of the dead enemy's max health
@@ -56,9 +56,13 @@ function RuneData.getBaseId(runeId: string): string
 	return "Rune" .. runeId
 end
 
-function RuneData.fits(runeId: string, skillShape: string): boolean
+-- skill = a SkillData entry. Element runes only fit skills whose own hit is Physical (spells are already elemental)
+function RuneData.fits(runeId: string, skill: { Shape: string, Element: string }): boolean
 	local rune = RuneData.Runes[runeId]
-	return rune ~= nil and (rune.Shapes == nil or rune.Shapes[skillShape] == true)
+	if rune == nil or (rune.Shapes ~= nil and rune.Shapes[skill.Shape] ~= true) then
+		return false
+	end
+	return rune.Convert == nil or skill.Element == "Physical"
 end
 
 -- The server publishes each skill's runes as a player attribute "SkillRunes_<skillId>" = "Reach,Ember".

@@ -7,8 +7,12 @@
 -- Stone runes are items too: { Base = "RuneReach", Rarity = "Rune", Affixes = {} } (bases added from RuneData below)
 -- Stone Tablets: { Base = "StoneTablet", Rarity = "Magic", Tier = 3, Affixes = { { Id = "MonsterSpeed", Value = 20 } } }
 -- (their affixes come from TabletData.Mods, see getAffixPool)
+-- Skill Stones: { Base = "SkillFireball", Rarity = "Skill", Affixes = {} } (bases added from SkillData below)
+-- Stone Spirits: { Base = "SpiritGemBeetle", Rarity = "Spirit", Affixes = {} } (bases added from SpiritData below)
 local RuneData = require(script.Parent:WaitForChild("RuneData"))
 local TabletData = require(script.Parent:WaitForChild("TabletData"))
+local SkillData = require(script.Parent:WaitForChild("SkillData"))
+local SpiritData = require(script.Parent:WaitForChild("SpiritData"))
 
 export type Affix = {
 	Id: string,
@@ -25,8 +29,12 @@ export type Item = {
 
 type BaseInfo = {
 	Name: string,
-	Slot: string, -- "Rune" = socketed into a skill, "Tablet" = placed in the portal; neither can be equipped
+	-- "Rune" = socketed into a skill, "Tablet" = placed in the portal, "Skill" = put on the skill bar,
+	-- "Spirit" = put in a spirit slot; none of these are worn
+	Slot: string,
 	Rune: string?, -- Rune bases: RuneData.Runes key
+	Skill: string?, -- Skill Stone bases: SkillData key
+	Spirit: string?, -- Stone Spirit bases: SpiritData.Spirits key
 	AllowOffHand: boolean?, -- For MainHand weapons: true = can equip OffHand, false = locks OffHand slot
 	Implicit: { [string]: number }, -- Stats every copy of this base always has
 }
@@ -63,6 +71,8 @@ ItemData.StatText = {
 	FireResistance = "+%d%% Fire Resistance",
 	ColdResistance = "+%d%% Cold Resistance",
 	LightningResistance = "+%d%% Lightning Resistance",
+	ManaRegen = "+%d%% Mana Regeneration", -- No affix yet: Stone Spirits
+	LootQuantity = "+%d%% Monster Drops", -- No affix yet: Stone Spirits
 } :: { [string]: string }
 
 -- Equipment slots in display order (9 slots supported)
@@ -95,6 +105,8 @@ ItemData.SlotNames = {
 	Armor = "Cloth",
 	Rune = "Skill Rune",
 	Tablet = "Portal Tablet",
+	Skill = "Skill Stone",
+	Spirit = "Stone Spirit",
 } :: { [string]: string }
 
 -- Check if an item's Base.Slot can be worn in a given equipment slot key
@@ -185,6 +197,38 @@ function ItemData.getRuneId(item: Item): string?
 	return if base then base.Rune else nil
 end
 
+-- One item base per skill: Skill Stones drop on their own (EnemyData Drops.SkillChance) and go on the skill bar
+for skillId, skill in pairs(SkillData) do
+	ItemData.Bases["Skill" .. skillId] = { Name = skill.Name, Slot = "Skill", Skill = skillId, Implicit = {} }
+end
+
+function ItemData.getSkillStoneBase(skillId: string): string
+	return "Skill" .. skillId
+end
+
+-- Which skill a Skill Stone teaches (nil for every other item)
+function ItemData.getSkillId(item: Item): string?
+	local base = ItemData.Bases[item.Base]
+	return if base then base.Skill else nil
+end
+
+-- One item base per Stone Spirit (Loot drops them on their own, see EnemyData Drops.SpiritChance)
+for spiritId, spirit in pairs(SpiritData.Spirits) do
+	ItemData.Bases[SpiritData.getBaseId(spiritId)] = { Name = spirit.Name, Slot = "Spirit", Spirit = spiritId, Implicit = {} }
+end
+
+-- Which spirit a Stone Spirit item is (nil for every other item)
+function ItemData.getSpiritId(item: Item): string?
+	local base = ItemData.Bases[item.Base]
+	return if base then base.Spirit else nil
+end
+
+-- Items that are picked up just by walking near them (Loot): everything except gear, which needs a press
+function ItemData.isAutoPickup(item: Item): boolean
+	local base = ItemData.Bases[item.Base]
+	return base ~= nil and (base.Slot == "Rune" or base.Slot == "Tablet" or base.Slot == "Skill" or base.Slot == "Spirit")
+end
+
 -- Random modifiers rolled onto Magic / Rare items (each affix at most once per item)
 ItemData.Affixes = {
 	FlatDamage = { Kind = "Prefix", Stat = "FlatDamage", Min = 3, Max = 12 },
@@ -231,6 +275,24 @@ ItemData.Rarities = {
 	Rune = {
 		Name = "Stone Rune",
 		Color = Color3.fromRGB(235, 150, 80),
+		MinAffixes = 0,
+		MaxAffixes = 0,
+		MaxPrefixes = 0,
+		MaxSuffixes = 0,
+	},
+	-- Only Skill Stones use this (not in RarityOrder either)
+	Skill = {
+		Name = "Skill Stone",
+		Color = Color3.fromRGB(90, 215, 185),
+		MinAffixes = 0,
+		MaxAffixes = 0,
+		MaxPrefixes = 0,
+		MaxSuffixes = 0,
+	},
+	-- Only Stone Spirits use this (not in RarityOrder either)
+	Spirit = {
+		Name = "Stone Spirit",
+		Color = Color3.fromRGB(235, 140, 230),
 		MinAffixes = 0,
 		MaxAffixes = 0,
 		MaxPrefixes = 0,

@@ -15,13 +15,24 @@ mockEnv.Color3 = {
 		return { R = r, G = g, B = b }
 	end,
 }
+mockEnv.Vector3 = {
+	new = function(x, y, z)
+		return { X = x, Y = y, Z = z }
+	end,
+}
 
--- Load RuneData and TabletData
+-- Load RuneData, TabletData and SkillData
 local runeDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/RuneData.luau"))
 local RuneData = luau.load(runeDataBytecode, { environment = mockEnv })()
 
 local tabletDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/TabletData.luau"))
 local TabletData = luau.load(tabletDataBytecode, { environment = mockEnv })()
+
+local skillDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/SkillData.luau"))
+local SkillData = luau.load(skillDataBytecode, { environment = mockEnv })()
+
+local spiritDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/SpiritData.luau"))
+local SpiritData = luau.load(spiritDataBytecode, { environment = mockEnv })()
 
 -- Setup mock script environment for ItemData
 local itemDataScript = {
@@ -31,6 +42,10 @@ local itemDataScript = {
 				return "RuneData"
 			elseif name == "TabletData" then
 				return "TabletData"
+			elseif name == "SkillData" then
+				return "SkillData"
+			elseif name == "SpiritData" then
+				return "SpiritData"
 			end
 			error("Child not found: " .. tostring(name))
 		end,
@@ -47,6 +62,10 @@ itemDataEnv.require = function(target)
 		return RuneData
 	elseif target == "TabletData" then
 		return TabletData
+	elseif target == "SkillData" then
+		return SkillData
+	elseif target == "SpiritData" then
+		return SpiritData
 	end
 	return require(target)
 end
@@ -132,6 +151,41 @@ test("Name formatting with tier support", function()
 
 	local tablet: any = { Id = "t1", Base = "StoneTablet", Rarity = "Magic", Tier = 4, Affixes = {} }
 	assertEq(ItemData.getName(tablet), "Stone Tablet (Tier 4)", "Tablet name includes tier")
+end)
+
+test("Every skill has a Skill Stone base", function()
+	for skillId, skill in pairs(SkillData) do
+		local baseId = ItemData.getSkillStoneBase(skillId)
+		local base = ItemData.Bases[baseId]
+		assertEq(base ~= nil, true, "Skill Stone base exists for " .. skillId)
+		assertEq(base.Slot, "Skill", "Skill Stones go on the skill bar, not an equipment slot")
+		local stone: any = { Id = "k1", Base = baseId, Rarity = "Skill", Affixes = {} }
+		assertEq(ItemData.getSkillId(stone), skillId, "getSkillId reads the skill back")
+		assertEq(ItemData.getName(stone), skill.Name, "Skill Stone is named after its skill")
+		assertEq(ItemData.getRuneId(stone), nil, "A Skill Stone is not a rune")
+	end
+	local sword: any = { Id = "s1", Base = "IronSword", Rarity = "Normal", Affixes = {} }
+	assertEq(ItemData.getSkillId(sword), nil, "Gear is not a Skill Stone")
+	assertEq(table.find(ItemData.RarityOrder, "Skill"), nil, "Gear never rolls the Skill rarity")
+end)
+
+test("Every Stone Spirit has an item base, and only non-gear picks itself up", function()
+	for spiritId, spirit in pairs(SpiritData.Spirits) do
+		local item: any = { Id = "p1", Base = SpiritData.getBaseId(spiritId), Rarity = "Spirit", Affixes = {} }
+		assertEq(ItemData.Bases[item.Base].Slot, "Spirit", spiritId .. " goes in a spirit slot")
+		assertEq(ItemData.getSpiritId(item), spiritId, "getSpiritId reads the spirit back")
+		assertEq(ItemData.getName(item), spirit.Name, "Named after the spirit")
+		for stat in pairs(spirit.Stats) do
+			assertEq(ItemData.StatText[stat] ~= nil, true, spiritId .. " stat " .. stat .. " has tooltip text")
+		end
+	end
+	local sword: any = { Id = "s1", Base = "IronSword", Rarity = "Normal", Affixes = {} }
+	local tablet: any = { Id = "t1", Base = "StoneTablet", Rarity = "Normal", Tier = 1, Affixes = {} }
+	local skill: any = { Id = "k1", Base = ItemData.getSkillStoneBase("Arc"), Rarity = "Skill", Affixes = {} }
+	assertEq(ItemData.isAutoPickup(sword), false, "Gear needs the prompt")
+	assertEq(ItemData.isAutoPickup(tablet), true, "Tablets pick themselves up")
+	assertEq(ItemData.isAutoPickup(skill), true, "Skill Stones pick themselves up")
+	assertEq(table.find(ItemData.RarityOrder, "Spirit"), nil, "Gear never rolls the Spirit rarity")
 end)
 
 test("formatStat output patterns", function()

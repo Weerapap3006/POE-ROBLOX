@@ -1,14 +1,18 @@
 -- ==========================================
--- LOOT (Roll random items, runes, stones and tablets + spawn pickups on the ground)
+-- LOOT (Roll random items, runes, skill stones, spirits, crafting stones and tablets + pickups on the ground,
+-- everything but gear picks itself up when a player walks close)
 -- Path: ServerStorage.Modules.Loot
 -- ==========================================
 local Debris = game:GetService("Debris")
 local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local ItemData = require(modulesFolder:WaitForChild("ItemData"))
 local RuneData = require(modulesFolder:WaitForChild("RuneData"))
+local SkillData = require(modulesFolder:WaitForChild("SkillData"))
+local SpiritData = require(modulesFolder:WaitForChild("SpiritData"))
 local StoneData = require(modulesFolder:WaitForChild("StoneData"))
 local TabletData = require(modulesFolder:WaitForChild("TabletData"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
@@ -20,6 +24,10 @@ local Crafting = require(script.Parent:WaitForChild("Crafting"))
 local DROP_LIFETIME = 90 -- Seconds before an item nobody picked up disappears
 local PICKUP_DISTANCE = 10
 local SCATTER = 3 -- Drops land up to this many studs from the enemy
+-- Crafting stones, runes, tablets, Skill Stones and spirits fly into the bag when a player walks this close
+-- (gear still needs the Pick Up prompt). Full bag = it stays on the ground with its prompt
+local AUTO_PICKUP_RADIUS = 8
+local AUTO_PICKUP_TICK = 0.2
 
 -- EnemyData Drops. The *Chance values are expected counts: 0.15 = 15% for one, 1.5 = one + 50% for a second
 export type DropTable = {
@@ -27,6 +35,8 @@ export type DropTable = {
 	Chance: number,
 	RarityWeights: { [string]: number },
 	RuneChance: number?,
+	SkillChance: number?,
+	SpiritChance: number?,
 	StoneChance: number?,
 	TabletChance: number?,
 }
@@ -34,6 +44,9 @@ export type DropTable = {
 local Loot = {}
 
 local random = Random.new()
+-- Drops on the ground that pick themselves up: CanTake = quiet "would it fit?" check, Take = the pickup
+local autoDrops: { [BasePart]: { CanTake: (Player) -> boolean, Take: (Player) -> () } } = {}
+local autoPickupRunning = false
 
 local function getDropsFolder(): Instance
 	local folder = workspace:FindFirstChild("Drops")
@@ -81,7 +94,8 @@ end
 function Loot.rollItem(rarity: string): ItemData.Item
 	local baseIds = {}
 	for baseId, base in pairs(ItemData.Bases) do
-		if base.Slot ~= "Rune" and base.Slot ~= "Tablet" then -- Runes and tablets drop on their own
+		-- Gear only: runes, tablets, Skill Stones and spirits drop on their own
+		if not (base.Slot == "Rune" or base.Slot == "Tablet" or base.Slot == "Skill" or base.Slot == "Spirit") then
 			table.insert(baseIds, baseId)
 		end
 	end
@@ -112,6 +126,36 @@ function Loot.rollRune(): ItemData.Item
 	}
 end
 
+-- A random Skill Stone (every skill equally likely, the starting ones too)
+function Loot.rollSkillStone(): ItemData.Item
+	local skillIds = {}
+	for skillId in pairs(SkillData) do
+		table.insert(skillIds, skillId)
+	end
+	table.sort(skillIds)
+	return {
+		Id = HttpService:GenerateGUID(false),
+		Base = ItemData.getSkillStoneBase(skillIds[random:NextInteger(1, #skillIds)]),
+		Rarity = "Skill",
+		Affixes = {},
+	}
+end
+
+-- A random Stone Spirit (every spirit equally likely)
+function Loot.rollSpirit(): ItemData.Item
+	local spiritIds = {}
+	for spiritId in pairs(SpiritData.Spirits) do
+		table.insert(spiritIds, spiritId)
+	end
+	table.sort(spiritIds)
+	return {
+		Id = HttpService:GenerateGUID(false),
+		Base = SpiritData.getBaseId(spiritIds[random:NextInteger(1, #spiritIds)]),
+		Rarity = "Spirit",
+		Affixes = {},
+	}
+end
+
 -- A Stone Tablet: rarity decides how many mods it rolls, like gear
 function Loot.rollTablet(tier: number, rarity: string): ItemData.Item
 	local tablet: ItemData.Item = {
@@ -128,8 +172,44 @@ end
 -- ==========================================
 -- 2. SPAWN A PICKUP ON THE GROUND
 -- ==========================================
--- onPickup returns false when the player couldn't take it (e.g. full inventory): it stays on the ground
-local function spawnPickup(name: string, color: Color3, groundPosition: Vector3, onPickup: (player: Player) -> boolean)
+-- Every AUTO_PICKUP_TICK: a living player close enough to an auto-pickup drop that has room for it takes it
+local function startAutoPickup()
+	if autoPickupRunning then
+		return
+	end
+	autoPickupRunning = true
+	task.spawn(function()
+		while true do
+			task.wait(AUTO_PICKUP_TICK)
+			for part, drop in pairs(autoDrops) do
+				if not part.Parent then
+					autoDrops[part] = nil -- Picked up by prompt, or expired
+					continue
+				end
+				for _, player in ipairs(Players:GetPlayers()) do
+					local character = player.Character
+					local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+					local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+					local close = root ~= nil and (root.Position - part.Position).Magnitude <= AUTO_PICKUP_RADIUS
+					if close and humanoid and humanoid.Health > 0 and drop.CanTake(player) then
+						drop.Take(player)
+						break
+					end
+				end
+			end
+		end
+	end)
+end
+
+-- onPickup returns false when the player couldn't take it (e.g. full inventory): it stays on the ground.
+-- canAutoPickup = quiet check (no message) that makes the drop pick itself up when a player walks close; nil = prompt only
+local function spawnPickup(
+	name: string,
+	color: Color3,
+	groundPosition: Vector3,
+	onPickup: (player: Player) -> boolean,
+	canAutoPickup: ((player: Player) -> boolean)?
+)
 	local scatter = Vector3.new(random:NextNumber(-SCATTER, SCATTER), 0, random:NextNumber(-SCATTER, SCATTER))
 
 	local part = Instance.new("Part")
@@ -172,41 +252,55 @@ local function spawnPickup(name: string, color: Color3, groundPosition: Vector3,
 	prompt.Parent = part
 
 	local pickedUp = false
-	prompt.Triggered:Connect(function(player: Player)
+	local function take(player: Player)
 		if pickedUp then
 			return
 		end
 		if onPickup(player) then
 			pickedUp = true
+			autoDrops[part] = nil
 			part:Destroy()
 		end
-	end)
+	end
+	prompt.Triggered:Connect(take)
 
 	part.Parent = getDropsFolder()
 	Debris:AddItem(part, DROP_LIFETIME)
+	if canAutoPickup then
+		autoDrops[part] = { CanTake = canAutoPickup, Take = take }
+		startAutoPickup()
+	end
 end
 
+-- Gear waits for the Pick Up prompt; runes, tablets, Skill Stones and spirits also pick themselves up
 function Loot.dropItem(item: ItemData.Item, groundPosition: Vector3)
 	local rarity = ItemData.Rarities[item.Rarity]
-	spawnPickup(ItemData.getName(item), rarity.Color, groundPosition, function(player: Player)
+	local function onPickup(player: Player): boolean
 		return PlayerData.addItem(player, item)
-	end)
+	end
+	local canAutoPickup = if ItemData.isAutoPickup(item) then PlayerData.hasRoom else nil
+	spawnPickup(ItemData.getName(item), rarity.Color, groundPosition, onPickup, canAutoPickup)
 end
 
 -- Crafting stones don't take an inventory slot: picking one up just adds to the player's count
 function Loot.dropStone(stoneId: string, groundPosition: Vector3)
-	spawnPickup(StoneData.Stones[stoneId].Name, StoneData.COLOR, groundPosition, function(player: Player)
+	local function onPickup(player: Player): boolean
 		return PlayerData.addStone(player, stoneId, 1)
-	end)
+	end
+	local function alwaysFits(): boolean
+		return true
+	end
+	spawnPickup(StoneData.Stones[stoneId].Name, StoneData.COLOR, groundPosition, onPickup, alwaysFits)
 end
 
 -- ==========================================
 -- 3. ENEMY DROPS
 -- ==========================================
 -- Rolls an enemy's drop table (EnemyData.Drops). run = the current dungeon run (DungeonRun): its tablet tier and
--- mods add loot (Quantity) and make Magic / Rare more likely (RarityBoost)
-function Loot.rollDrops(drops: DropTable, groundPosition: Vector3, run: TabletData.Effects, isBoss: boolean)
-	local more = 1 + run.Quantity
+-- mods add loot (Quantity) and make Magic / Rare more likely (RarityBoost). extraQuantity = more loot on top
+-- (0.2 = +20%, the Gem Beetle spirit of a player who helped kill it)
+function Loot.rollDrops(drops: DropTable, groundPosition: Vector3, run: TabletData.Effects, isBoss: boolean, extraQuantity: number?)
+	local more = 1 + run.Quantity + (extraQuantity or 0)
 	local weights = table.clone(drops.RarityWeights)
 	for _, rarity in ipairs({ "Magic", "Rare" }) do
 		if weights[rarity] then
@@ -225,6 +319,14 @@ function Loot.rollDrops(drops: DropTable, groundPosition: Vector3, run: TabletDa
 
 	for _ = 1, rollCount((drops.RuneChance or 0) * more) do
 		Loot.dropItem(Loot.rollRune(), groundPosition)
+	end
+
+	for _ = 1, rollCount((drops.SkillChance or 0) * more) do
+		Loot.dropItem(Loot.rollSkillStone(), groundPosition)
+	end
+
+	for _ = 1, rollCount((drops.SpiritChance or 0) * more) do
+		Loot.dropItem(Loot.rollSpirit(), groundPosition)
 	end
 
 	local stoneWeights = {}
