@@ -28,6 +28,8 @@
  ┣ 📂 Workspace                        <-- [โลก 3D ในฉาก: แก้ใน Studio]
  ┃  ┣ 🧱 Baseplate / SpawnLocation     <-- พื้นแมพและจุดเกิดในโซน Lobby
  ┃  ┣ 📂 DungeonMap                    <-- โซนปลอดภัย (Lobby), ประตูวาร์ปเข้าด่าน/กลับเมือง, กำแพงด่าน
+ ┃  ┣ 📂 LobbyHub                      <-- เมือง Lobby แบบ blockout (ลาน, แท่นแผ่นศิลา, อนุสาวรีย์ + ธงคลาส, จุดเผื่อ Stash/Merchant/...)
+ ┃  ┃                                      สร้างด้วย tools/BuildLobbyHub.luau ใน Command Bar แล้วแก้ต่อใน Studio
  ┃  ┣ 📂 Enemies                       <-- มอนสเตอร์ทั้งหมด (EnemyService สร้างตอนเริ่มเกม/รีเซ็ตด่าน)
  ┃  ┃  ┗ 🧍 TrainingDummy (Model)      <-- หุ่นซ้อมมือ R15 (HP: 500, ตายแล้วรีเลือดเอง, ไม่ให้ EXP/ของ)
  ┃  ┣ 📂 EnemySpawns                   <-- Part บอกจุดเกิดศัตรูในด่าน (Grunt 20 จุด, Brute 1 จุด)
@@ -100,7 +102,7 @@
 * **สีธาตุ / ความแรงไฟเผา / ช้าเท่าไร / เกณฑ์แช่แข็ง / ช็อตแรงแค่ไหน / เพดานค่าต้านทาน (75%)** → `ReplicatedStorage > Modules > Elements` (ลูปสถานะอยู่ใน `ServerStorage > Modules > Ailments`)
 * **เลือดเริ่มต้น / เลือด-มานา-ดาเมจต่อเลเวล / EXP ที่ใช้ขึ้นเลเวล / เลเวลสูงสุด** → `ReplicatedStorage > Modules > PlayerStats`
 * **มานาฟื้นเร็วแค่ไหน / ES รอกี่วิถึงชาร์จ / ขวดยาเลือด-มานา (จำนวนครั้ง, ฟื้นกี่ %, นานกี่วิ, ได้คืนต่อการฆ่า)** → `ReplicatedStorage > Modules > PlayerStats` (`FLASKS` ฯลฯ, ปุ่มและสีช่องขวดอยู่ใน `CombatClient` → `FLASK_SLOTS`)
-* **พุ่งหลบ (Dash / Dodge): ระยะพุ่ง / เวลาพุ่ง (`0.36` วิ) / คูลดาวน์ (`1` วิ) / ช่วงอมตะ (`0.4` วิ)** → `ReplicatedStorage > Modules > PlayerStats` (ปุ่มและท่าพุ่งหลบอยู่ใน `CombatClient` → `DODGE_KEY`, `DASH_DIP`, `DASH_LEAN_ANGLE`, `DASH_MAX_FORCE`)
+* **พุ่งหลบ (Dash / Dodge): ระยะพุ่ง / เวลาพุ่ง (`0.36` วิ) / คูลดาวน์ (`1` วิ) / ช่วงอมตะ (`0.4` วิ)** → `ReplicatedStorage > Modules > PlayerStats` (ปุ่มและท่าพุ่งหลบอยู่ใน `CombatClient` → `DODGE_KEY`, `DASH_CROUCH`, `DASH_LEAN_ANGLE`, `DASH_MAX_FORCE`)
 * **มุมกล้อง / ระยะซูม / ความนุ่มนวลกล้อง** → `StarterPlayerScripts > CameraScript`
 * **ท่าฟัน / สีคลื่นดาบ / ปุ่มกดสกิล / ตัวเลขดาเมจเด้ง** → `StarterPlayerScripts > CombatClient`
 * **แถบ ES-เลือด-มานา-EXP / แถบเลือดศัตรูและบอส / ข้อความแจ้งเตือน / หน้าจอตาย** → `StarterPlayerScripts > HudClient`
@@ -150,7 +152,7 @@
      * `SWING_DURATION`: เวลาเหวี่ยงออกแล้วกลับของท่าฟัน (`0.18` วิ)
      * `swingAngle` / `sideAngle` / `twist` ใน `playSlashVFX`: องศาเหวี่ยงแขนและบิดเอว
      * `SLASH_COLOR`, `ENEMY_ATTACK_COLOR`, `ENEMY_ALERT_COLOR`: สีคลื่นดาบของเรา / สีเตือนท่าศัตรู / สี "!"
-     * `DODGE_KEY` (ปุ่มพุ่งหลบ), `DASH_DIP` / `DASH_LEAN_ANGLE` / `DASH_MAX_FORCE` (ท่าพุ่งหลบและแรงพุ่ง) — ระยะ/เวลาพุ่ง/คูลดาวน์/ช่วงอมตะอยู่ใน `PlayerStats`
+     * `DODGE_KEY` (ปุ่มพุ่งหลบ), `DASH_CROUCH` / `DASH_LEAN_ANGLE` / `DASH_MAX_FORCE` (ท่าพุ่งหลบและแรงพุ่ง) — ระยะ/เวลาพุ่ง/คูลดาวน์/ช่วงอมตะอยู่ใน `PlayerStats`
      * `FLASK_SLOTS` (ลำดับช่องขวด, ปุ่ม, สีน้ำในช่อง, สีประกาย), `NO_MANA_SHADE` (สีทับช่องตอนมานาไม่พอ) — จำนวนครั้ง/ฟื้นเท่าไร/นานแค่ไหนอยู่ใน `PlayerStats.FLASKS`
      * สี / ขนาดตัวเลขดาเมจ: `label.TextColor3` และ `billboard.Size` ใน `showHitFeedback`
 
@@ -390,6 +392,15 @@
 
 ---
 
+### 🛠️ เครื่องมือสร้างแมพ (`tools/` — ไม่ได้อยู่ใน Rojo ไม่เข้าเกม)
+* สคริปต์สำหรับวางใน **Studio Command Bar** (View → Command Bar → วางทั้งไฟล์ → Enter) สร้าง blockout ลง Workspace ครั้งเดียว แล้วแก้ต่อด้วยมือใน Team Create ได้ตามปกติ (แมพยังอยู่ใน Studio ตามกฎแยกงาน)
+* **`tools/BuildLobbyHub.luau`** → `Workspace.LobbyHub`: หาตำแหน่งเอง (กลางลาน = `SpawnLocation` ตัวแรก, หันไปทาง `DungeonMap.LobbyDungeonPortal`, ความสูงพื้นยิงหาจากใต้ SpawnLocation)
+  * พื้น (โฟลเดอร์ `Floor`): ลานหินวงกลมรัศมี 34 + ลวดลายกลางลาน + ทางปูไปประตูด่าน — แบนราบ ไม่มีชน/ไม่โดนคลิก (ผู้เล่นกระโดดไม่ได้)
+  * ของแข็งตามขอบลาน: อนุสาวรีย์ + คริสตัลเรืองแสง (หลังจุดเกิด), ธงคลาส Warrior / Ranger / Mystic, `TabletAltar` (ข้างประตูด่าน, ป้าย "Place tablets from your Inventory" — ยังไม่มีโค้ดผูก), แผง `Stash` / `Merchant` / `CraftingBench` + `NoticeBoard` (ป้าย "Coming soon"), เสาไฟ 8 ต้น (ตะเกียงเหล็กกระจก + เปลวไฟ Neon ชิ้นเล็ก + PointLight ไม่มีเงา — Neon ก้อนใหญ่สีสว่างจะเรืองจนเป็นก้อนขาว)
+  * แต่ละชิ้นที่เผื่อไว้มี attribute `HubSpot` (= `TabletAltar`, `Stash`, `Merchant`, `CraftingBench`, `NoticeBoard`) ให้โค้ดหาเจอทีหลัง
+  * ปลอดภัย: สร้างแค่ `Workspace.LobbyHub` (รันซ้ำ = แทนที่โฟลเดอร์นี้ทั้งหมด ของที่แก้มือในนั้นหาย), ชิ้นไหนจะทับของที่มีอยู่แล้วจะข้าม (บอกใน Output), Ctrl+Z ย้อนได้ทั้งก้อน, ไม่ใส่ใน `DungeonMap` เพราะมินิแมพวาด Part ใน DungeonMap เป็นกำแพง
+  * **จุดที่ปรับแก้บ่อย:** `PLAZA_RADIUS`, `LAMP_RADIUS`, `PATH_WIDTH`, สี, ตำแหน่งในบรรทัด `build...(toWorld(x, z))` (x = ขวา, z = ไปทางประตูด่าน)
+
 ### ⚙️ ค่าใน `default.project.json` (Rojo ตั้งให้ตอน Connect)
 * `StarterPlayer.EnableMouseLockOption = false`: ปิด Shift Lock ของ Roblox (กล้องเกมนี้ล็อกมุมอยู่แล้ว และถ้าผู้เล่นเปิด Shift Lock ไว้ กด Shift แล้วเมาส์จะค้างกลางจอ ทำให้เล็งไม่ได้และ Shift + คลิกในกระเป๋าใช้ไม่ได้)
 
@@ -433,6 +444,7 @@
 * ของตกแต่งที่ไม่อยากให้ขวางทางศัตรู (หญ้า, ป้าย) ตั้ง `CanCollide = false` ศัตรูจะมองข้าม
 * Highlight ที่ใส่ในแมพจะถูก `EnemyVisualsClient` เปิด/ปิดตามระยะด้วย อยากซ่อนให้ลบทิ้ง
 * `TrainingDummy` เป็นศัตรูที่ทำใน Studio เอง (ไม่ได้อยู่ใน EnemyData) → โดนตีได้ แต่ไม่ให้ EXP/ของ
+* **`Workspace.LobbyHub`** (ไม่บังคับ): ตอนนี้โค้ดเกมยังไม่อ่านอะไรจากมัน แต่จุดที่มี attribute `HubSpot` เผื่อไว้ให้ระบบในอนาคต (Stash, ร้านค้า, แท่นแผ่นศิลา) เปลี่ยนชื่อ/ย้ายได้ แต่อย่าลบ attribute
 
 ---
 

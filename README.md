@@ -117,6 +117,8 @@ git config --global user.email "อีเมล GitHub ของคุณ"
 
 เปิด place **Project poe** ผ่าน Team Create แล้วแก้ใน Studio ได้เลย ไม่ต้องใช้ Rojo หรือ Git
 
+มีสคริปต์ช่วยสร้าง blockout อยู่ในโฟลเดอร์ [`tools/`](tools/) (เช่น `BuildLobbyHub.luau` สร้างเมือง Lobby) เปิดไฟล์ คัดลอกทั้งหมด ไปวางใน **View → Command Bar** ของ Studio แล้วกด Enter จากนั้นแก้ต่อด้วยมือได้ตามปกติ (Ctrl+Z ย้อนได้) รายละเอียดอยู่ใน [`ARCHITECTURE.md`](ARCHITECTURE.md) หัวข้อ "เครื่องมือสร้างแมพ"
+
 ### 💻 เขียนและเทสโค้ด
 
 **ทำสำเนา place** (ครั้งแรก หรือตอนอยากได้แมพล่าสุดมาเทส):
