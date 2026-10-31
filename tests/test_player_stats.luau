@@ -18,13 +18,21 @@ for k, v in pairs(getfenv()) do
 	mockEnv[k] = v
 end
 mockEnv.Color3 = Color3
+mockEnv.Vector3 = {
+	new = function(x, y, z)
+		return { X = x, Y = y, Z = z }
+	end,
+}
 
--- Load RuneData and TabletData first
+-- Load RuneData, TabletData and SkillData first
 local runeDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/RuneData.luau"))
 local RuneData = luau.load(runeDataBytecode, { environment = mockEnv })()
 
 local tabletDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/TabletData.luau"))
 local TabletData = luau.load(tabletDataBytecode, { environment = mockEnv })()
+
+local skillDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/SkillData.luau"))
+local SkillData = luau.load(skillDataBytecode, { environment = mockEnv })()
 
 -- Setup script mock for ItemData
 local itemDataScript = {
@@ -34,6 +42,8 @@ local itemDataScript = {
 				return "RuneData"
 			elseif name == "TabletData" then
 				return "TabletData"
+			elseif name == "SkillData" then
+				return "SkillData"
 			end
 			error("Child not found: " .. tostring(name))
 		end,
@@ -50,6 +60,8 @@ itemDataEnv.require = function(target)
 		return RuneData
 	elseif target == "TabletData" then
 		return TabletData
+	elseif target == "SkillData" then
+		return SkillData
 	end
 	return require(target)
 end
@@ -168,6 +180,19 @@ test("Passive tree bonus stats integration", function()
 	assertEq(stats.MaxHealth, 150, "100 base + 50 passive = 150")
 	assertEq(stats.FireDamage, 15, "0 base + 15 passive = 15")
 	assertEq(stats.AttackSpeed, 20, "0 base + 20 passive = 20")
+end)
+
+test("Skill bar settings match each other and SkillData", function()
+	assertEq(#PlayerStats.STARTING_SKILLS, PlayerStats.SKILL_BAR_SLOTS, "One starting entry per skill bar slot")
+	assertEq(#PlayerStats.SKILL_BAR_KEYS, PlayerStats.SKILL_BAR_SLOTS, "One key label per skill bar slot")
+	local seen = {}
+	for _, skillId in ipairs(PlayerStats.STARTING_SKILLS) do
+		if skillId ~= "" then
+			assertEq(SkillData[skillId] ~= nil, true, "Starting skill exists: " .. skillId)
+			assertEq(seen[skillId], nil, "No starting skill twice: " .. skillId)
+			seen[skillId] = true
+		end
+	end
 end)
 
 print(string.format("\n📊 Results: %d passed, %d failed\n", passed, failed))

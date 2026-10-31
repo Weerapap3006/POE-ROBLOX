@@ -44,6 +44,12 @@ PlayerStats.DODGE_DURATION = 0.36 -- Seconds the dash bursts the character forwa
 PlayerStats.DODGE_DISTANCE = 13 -- Studs covered by one roll
 PlayerStats.DODGE_INVULNERABLE_TIME = 0.4 -- Enemy hits miss for this long after the server gets the roll
 
+-- Skill bar: Skill Stones (ItemData "Skill" .. id) go into these slots. Keys: LMB / RMB / Q / R (CombatClient).
+-- New players (and saves from before the skill bar) start with these skills, empty strings = empty slots
+PlayerStats.SKILL_BAR_SLOTS = 4
+PlayerStats.SKILL_BAR_KEYS = { "LMB", "RMB", "Q", "R" } -- Text on the buttons (the inputs are in CombatClient)
+PlayerStats.STARTING_SKILLS = { "BasicSlash", "SpinSlash", "", "" }
+
 -- Flasks (Life = key 1, Mana = key 2, or the mobile buttons). Charges = uses: full on spawn and at the portals,
 -- kills add more. Each recovers RecoverPercent of max health / mana gradually over Duration seconds,
 -- and can't be drunk again until that ends

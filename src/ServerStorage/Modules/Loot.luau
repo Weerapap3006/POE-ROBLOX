@@ -1,5 +1,5 @@
 -- ==========================================
--- LOOT (Roll random items, runes, stones and tablets + spawn pickups on the ground)
+-- LOOT (Roll random items, runes, skill stones, crafting stones and tablets + spawn pickups on the ground)
 -- Path: ServerStorage.Modules.Loot
 -- ==========================================
 local Debris = game:GetService("Debris")
@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local ItemData = require(modulesFolder:WaitForChild("ItemData"))
 local RuneData = require(modulesFolder:WaitForChild("RuneData"))
+local SkillData = require(modulesFolder:WaitForChild("SkillData"))
 local StoneData = require(modulesFolder:WaitForChild("StoneData"))
 local TabletData = require(modulesFolder:WaitForChild("TabletData"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
@@ -27,6 +28,7 @@ export type DropTable = {
 	Chance: number,
 	RarityWeights: { [string]: number },
 	RuneChance: number?,
+	SkillChance: number?,
 	StoneChance: number?,
 	TabletChance: number?,
 }
@@ -81,7 +83,7 @@ end
 function Loot.rollItem(rarity: string): ItemData.Item
 	local baseIds = {}
 	for baseId, base in pairs(ItemData.Bases) do
-		if base.Slot ~= "Rune" and base.Slot ~= "Tablet" then -- Runes and tablets drop on their own
+		if base.Slot ~= "Rune" and base.Slot ~= "Tablet" and base.Slot ~= "Skill" then -- Those drop on their own
 			table.insert(baseIds, baseId)
 		end
 	end
@@ -108,6 +110,21 @@ function Loot.rollRune(): ItemData.Item
 		Id = HttpService:GenerateGUID(false),
 		Base = RuneData.getBaseId(runeIds[random:NextInteger(1, #runeIds)]),
 		Rarity = "Rune",
+		Affixes = {},
+	}
+end
+
+-- A random Skill Stone (every skill equally likely, the starting ones too)
+function Loot.rollSkillStone(): ItemData.Item
+	local skillIds = {}
+	for skillId in pairs(SkillData) do
+		table.insert(skillIds, skillId)
+	end
+	table.sort(skillIds)
+	return {
+		Id = HttpService:GenerateGUID(false),
+		Base = ItemData.getSkillStoneBase(skillIds[random:NextInteger(1, #skillIds)]),
+		Rarity = "Skill",
 		Affixes = {},
 	}
 end
@@ -225,6 +242,10 @@ function Loot.rollDrops(drops: DropTable, groundPosition: Vector3, run: TabletDa
 
 	for _ = 1, rollCount((drops.RuneChance or 0) * more) do
 		Loot.dropItem(Loot.rollRune(), groundPosition)
+	end
+
+	for _ = 1, rollCount((drops.SkillChance or 0) * more) do
+		Loot.dropItem(Loot.rollSkillStone(), groundPosition)
 	end
 
 	local stoneWeights = {}

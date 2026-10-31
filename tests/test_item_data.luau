@@ -15,13 +15,21 @@ mockEnv.Color3 = {
 		return { R = r, G = g, B = b }
 	end,
 }
+mockEnv.Vector3 = {
+	new = function(x, y, z)
+		return { X = x, Y = y, Z = z }
+	end,
+}
 
--- Load RuneData and TabletData
+-- Load RuneData, TabletData and SkillData
 local runeDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/RuneData.luau"))
 local RuneData = luau.load(runeDataBytecode, { environment = mockEnv })()
 
 local tabletDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/TabletData.luau"))
 local TabletData = luau.load(tabletDataBytecode, { environment = mockEnv })()
+
+local skillDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/SkillData.luau"))
+local SkillData = luau.load(skillDataBytecode, { environment = mockEnv })()
 
 -- Setup mock script environment for ItemData
 local itemDataScript = {
@@ -31,6 +39,8 @@ local itemDataScript = {
 				return "RuneData"
 			elseif name == "TabletData" then
 				return "TabletData"
+			elseif name == "SkillData" then
+				return "SkillData"
 			end
 			error("Child not found: " .. tostring(name))
 		end,
@@ -47,6 +57,8 @@ itemDataEnv.require = function(target)
 		return RuneData
 	elseif target == "TabletData" then
 		return TabletData
+	elseif target == "SkillData" then
+		return SkillData
 	end
 	return require(target)
 end
@@ -132,6 +144,22 @@ test("Name formatting with tier support", function()
 
 	local tablet: any = { Id = "t1", Base = "StoneTablet", Rarity = "Magic", Tier = 4, Affixes = {} }
 	assertEq(ItemData.getName(tablet), "Stone Tablet (Tier 4)", "Tablet name includes tier")
+end)
+
+test("Every skill has a Skill Stone base", function()
+	for skillId, skill in pairs(SkillData) do
+		local baseId = ItemData.getSkillStoneBase(skillId)
+		local base = ItemData.Bases[baseId]
+		assertEq(base ~= nil, true, "Skill Stone base exists for " .. skillId)
+		assertEq(base.Slot, "Skill", "Skill Stones go on the skill bar, not an equipment slot")
+		local stone: any = { Id = "k1", Base = baseId, Rarity = "Skill", Affixes = {} }
+		assertEq(ItemData.getSkillId(stone), skillId, "getSkillId reads the skill back")
+		assertEq(ItemData.getName(stone), skill.Name, "Skill Stone is named after its skill")
+		assertEq(ItemData.getRuneId(stone), nil, "A Skill Stone is not a rune")
+	end
+	local sword: any = { Id = "s1", Base = "IronSword", Rarity = "Normal", Affixes = {} }
+	assertEq(ItemData.getSkillId(sword), nil, "Gear is not a Skill Stone")
+	assertEq(table.find(ItemData.RarityOrder, "Skill"), nil, "Gear never rolls the Skill rarity")
 end)
 
 test("formatStat output patterns", function()

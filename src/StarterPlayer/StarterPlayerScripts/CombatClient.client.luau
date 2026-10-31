@@ -23,15 +23,20 @@ local SkillData = require(modulesFolder:WaitForChild("SkillData"))
 local PlayerStats = require(modulesFolder:WaitForChild("PlayerStats"))
 local Elements = require(modulesFolder:WaitForChild("Elements"))
 local RuneData = require(modulesFolder:WaitForChild("RuneData"))
+local SkillCast = require(modulesFolder:WaitForChild("SkillCast"))
 local Ui = require(modulesFolder:WaitForChild("Ui"))
 
 -- ==========================================
 -- CONFIGURATION
 -- ==========================================
--- Skill bar order on screen. Inputs = mouse buttons / keys for the skill (mobile taps the button instead)
-local SKILL_BAR: { { SkillId: string, KeyText: string, Inputs: { EnumItem } } } = {
-	{ SkillId = "BasicSlash", KeyText = "LMB", Inputs = { Enum.UserInputType.MouseButton1 } },
-	{ SkillId = "SpinSlash", KeyText = "RMB / Q", Inputs = { Enum.UserInputType.MouseButton2, Enum.KeyCode.Q } },
+-- Skill bar slots, left to right. Which skill sits in each slot comes from the server ("SkillBar" attribute,
+-- changed in the inventory). Inputs = mouse buttons / keys of the slot, in the same order as
+-- PlayerStats.SKILL_BAR_KEYS (the text shown on the buttons). Mobile taps the buttons instead
+local SKILL_SLOT_INPUTS: { { EnumItem } } = {
+	{ Enum.UserInputType.MouseButton1 },
+	{ Enum.UserInputType.MouseButton2 },
+	{ Enum.KeyCode.Q },
+	{ Enum.KeyCode.R },
 }
 local TOUCH_AUTO_AIM_RANGE = 25 -- Mobile: skills aim at the nearest enemy within this many studs
 local DODGE_KEY = Enum.KeyCode.Space -- Takes over the jump key (jumping is turned off)
@@ -53,8 +58,9 @@ local PLAYER_HURT_COLOR = Color3.fromRGB(255, 80, 80)
 -- ==========================================
 -- STATE VARIABLES
 -- ==========================================
-local lastUseTimes: { [string]: number } = {}
-local heldSkills: { [string]: boolean } = {} -- Holding the button keeps attacking
+local lastUseTimes: { [string]: number } = {} -- Per skill id (cooldowns follow the skill, not the slot)
+local heldSlots: { [number]: boolean } = {} -- Holding a slot's button keeps using its skill
+local slotSkills: { string } = {} -- Skill id in each skill bar slot, "" = empty (from the "SkillBar" attribute)
 local comboStep = 1
 local currentMouseWorldPos = Vector3.zero
 local dodgeEndTime = 0 -- Dashing until this time: no attacks, no turning toward the mouse
@@ -337,22 +343,24 @@ local function getGroundBelow(character: Model, rootPart: BasePart): Vector3
 	return rootPart.Position - Vector3.new(0, hipHeight + rootPart.Size.Y / 2, 0)
 end
 
--- How stone runes change a skill's look (same rules as CombatServer): Reach = bigger, Split = side slashes,
--- Ember / Frost / Storm = that element's color. Read from the owner's "SkillRunes_<skillId>" attribute
+-- How a skill looks: spells glow in their element's color, physical skills are cyan. Stone runes change it
+-- (same rules as CombatServer): Reach = bigger / longer, Split = side slashes / shots, Ember / Frost / Storm =
+-- that element's color on a physical skill. Read from the owner's "SkillRunes_<skillId>" attribute
 type SkillLook = { Color: Color3, Scale: number, Split: boolean }
 
 local function getSkillLook(character: Model, skillId: string): SkillLook
 	local owner = Players:GetPlayerFromCharacter(character)
 	local runes = RuneData.parse(if owner then owner:GetAttribute("SkillRunes_" .. skillId) else nil)
-	local color = SLASH_COLOR
+	local skill = SkillData[skillId]
+	local color = if skill and Elements.Colors[skill.Element] then Elements.Colors[skill.Element] else SLASH_COLOR
 	for _, element in ipairs(Elements.Types) do
+		if color ~= SLASH_COLOR then
+			break -- A spell's own color, or the first element in Elements.Types order when several are converted
+		end
 		for runeId in pairs(runes) do
 			if RuneData.Runes[runeId].Convert == element then
 				color = Elements.Colors[element]
 			end
-		end
-		if color ~= SLASH_COLOR then
-			break -- First element in Elements.Types order wins when several are converted
 		end
 	end
 	return {
@@ -362,27 +370,43 @@ local function getSkillLook(character: Model, skillId: string): SkillLook
 	}
 end
 
--- BasicSlash: arm swing + waist twist, alternating left/right each combo step
-local function playSlashVFX(character: Model, aimPoint: Vector3, currentCombo: number, look: SkillLook)
-	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not rootPart then
-		return
+-- Flat direction from the character toward the aim point (where it faces when aiming at itself)
+local function getAimDirection(rootPart: BasePart, aimPoint: Vector3): Vector3
+	local flat = Vector3.new(aimPoint.X - rootPart.Position.X, 0, aimPoint.Z - rootPart.Position.Z)
+	if flat.Magnitude < 0.1 then
+		flat = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
 	end
+	return flat.Unit
+end
 
+-- Body pose of a skill (SkillData Animation), layered on top of the walk animation
+local function playPose(character: Model, animation: string, step: number)
 	local rightShoulder, waist = getSwingMotors(character)
-	local swingAngle = if currentCombo == 1 then math.rad(110) else math.rad(75)
-	local sideAngle = if currentCombo == 1 then math.rad(-35) else math.rad(35)
-	startSwing(rightShoulder, CFrame.Angles(swingAngle, sideAngle, 0))
-
-	local twist = if currentCombo == 1 then math.rad(25) else math.rad(-25)
-	startSwing(waist, CFrame.Angles(0, twist, 0))
-
-	local flatAim = Vector3.new(aimPoint.X, rootPart.Position.Y, aimPoint.Z)
-	if (flatAim - rootPart.Position).Magnitude < 0.1 then
-		flatAim = rootPart.Position + rootPart.CFrame.LookVector
+	if animation == "Slash" then
+		-- Arm swing + waist twist, alternating left/right each combo step
+		local swingAngle = if step == 1 then math.rad(110) else math.rad(75)
+		local sideAngle = if step == 1 then math.rad(-35) else math.rad(35)
+		startSwing(rightShoulder, CFrame.Angles(swingAngle, sideAngle, 0))
+		startSwing(waist, CFrame.Angles(0, if step == 1 then math.rad(25) else math.rad(-25), 0))
+	elseif animation == "Spin" then
+		-- Upper body whirls around
+		startSwing(waist, CFrame.Angles(0, math.rad(170), 0))
+		startSwing(rightShoulder, CFrame.Angles(math.rad(90), 0, 0))
+	elseif animation == "Slam" then
+		-- Arm raised high while the upper body bends forward into the ground
+		startSwing(rightShoulder, CFrame.Angles(math.rad(150), 0, 0))
+		startSwing(waist, CFrame.Angles(math.rad(-25), 0, 0))
+	else
+		-- Cast: arm thrust out toward the aim
+		startSwing(rightShoulder, CFrame.Angles(math.rad(95), 0, 0))
+		startSwing(waist, CFrame.Angles(0, math.rad(-15), 0))
 	end
-	local tiltAngle = if currentCombo == 1 then math.rad(15) else math.rad(-15)
-	local lookCF = CFrame.lookAt(rootPart.Position, flatAim)
+end
+
+-- Box (Slash): crescent wave toward the aim, plus one to each side with the Split rune
+local function playSlashEffect(rootPart: BasePart, direction: Vector3, step: number, look: SkillLook)
+	local tiltAngle = if step == 1 then math.rad(15) else math.rad(-15)
+	local lookCF = CFrame.lookAt(rootPart.Position, rootPart.Position + direction)
 	spawnCrescent(lookCF, tiltAngle, look.Color, look.Scale)
 	if look.Split then
 		for _, side in ipairs({ 1, -1 }) do
@@ -391,20 +415,13 @@ local function playSlashVFX(character: Model, aimPoint: Vector3, currentCombo: n
 	end
 end
 
--- SpinSlash: upper body whirls around while a ring wave expands to the skill radius
-local function playSpinVFX(character: Model, radius: number, look: SkillLook)
-	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not rootPart then
-		return
-	end
-
-	local rightShoulder, waist = getSwingMotors(character)
-	startSwing(waist, CFrame.Angles(0, math.rad(170), 0))
-	startSwing(rightShoulder, CFrame.Angles(math.rad(90), 0, 0))
-
-	local ring = makeDisc(getGroundBelow(character, rootPart) + Vector3.new(0, 0.6, 0), 2, look.Color, 0.2)
-	ring.Name = "SpinSlashVFX"
-	local diameter = radius * look.Scale * 2
+-- Radius: a ring wave that expands to the skill's radius, around the character (Spin Slash, Frost Nova)
+-- or CenterOffset studs in front of it (Ground Slam)
+local function playRingEffect(character: Model, rootPart: BasePart, direction: Vector3, skill: SkillData.Skill, look: SkillLook)
+	local center = getGroundBelow(character, rootPart) + direction * (skill.CenterOffset or 0) * look.Scale
+	local ring = makeDisc(center + Vector3.new(0, 0.6, 0), 2, look.Color, 0.2)
+	ring.Name = "SkillRingVFX"
+	local diameter = (skill.Radius or 10) * look.Scale * 2
 	TweenService:Create(ring, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 		Size = Vector3.new(0.2, diameter, diameter),
 		Transparency = 1,
@@ -412,16 +429,131 @@ local function playSpinVFX(character: Model, radius: number, look: SkillLook)
 	Debris:AddItem(ring, 0.3)
 end
 
+-- Glowing ball that pops outward and fades (projectile impacts)
+local function spawnBurst(position: Vector3, diameter: number, color: Color3)
+	local burst = Instance.new("Part")
+	burst.Name = "BurstVFX"
+	burst.Shape = Enum.PartType.Ball
+	burst.Anchored = true
+	burst.CanCollide = false
+	burst.CanQuery = false
+	burst.CanTouch = false
+	burst.CastShadow = false
+	burst.Material = Enum.Material.Neon
+	burst.Color = color
+	burst.Transparency = 0.25
+	burst.Size = Vector3.one
+	burst.CFrame = CFrame.new(position)
+	burst.Parent = workspace
+	TweenService:Create(burst, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Size = Vector3.one * diameter,
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(burst, 0.3)
+end
+
+-- Projectile: a glowing ball flies to where SkillCast says it lands (first enemy / wall / max range, the same
+-- rule the server uses), then bursts there (an explosive one bursts as big as its explosion)
+local function spawnProjectile(character: Model, origin: Vector3, direction: Vector3, skill: SkillData.Skill, look: SkillLook)
+	local landing, distance = SkillCast.castProjectile(origin, direction, (skill.Range or 0) * look.Scale, skill.Width or 1, character)
+	local size = (skill.Width or 1) * 0.6
+
+	local ball = Instance.new("Part")
+	ball.Name = "ProjectileVFX"
+	ball.Shape = Enum.PartType.Ball
+	ball.Anchored = true
+	ball.CanCollide = false
+	ball.CanQuery = false
+	ball.CanTouch = false
+	ball.CastShadow = false
+	ball.Material = Enum.Material.Neon
+	ball.Color = look.Color
+	ball.Size = Vector3.one * size
+	ball.CFrame = CFrame.new(origin)
+	ball.Parent = workspace
+
+	local travelTime = math.max(distance, 0.1) / (skill.Speed or 100)
+	TweenService:Create(ball, TweenInfo.new(travelTime, Enum.EasingStyle.Linear), { CFrame = CFrame.new(landing) }):Play()
+	Debris:AddItem(ball, travelTime + 0.05)
+	task.delay(travelTime, function()
+		local diameter = if skill.ExplosionRadius then skill.ExplosionRadius * look.Scale * 2 else size * 3
+		spawnBurst(landing, diameter, look.Color)
+	end)
+end
+
+-- One jagged lightning bolt between two points (3 short neon segments that flicker out)
+local function spawnBolt(from: Vector3, to: Vector3, color: Color3)
+	local points = { from }
+	for step = 1, 2 do
+		local jitter = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 2.4
+		table.insert(points, from:Lerp(to, step / 3) + jitter)
+	end
+	table.insert(points, to)
+	for index = 1, #points - 1 do
+		local a, b = points[index], points[index + 1]
+		local length = (b - a).Magnitude
+		if length > 0.05 then
+			local segment = Instance.new("Part")
+			segment.Name = "BoltVFX"
+			segment.Anchored = true
+			segment.CanCollide = false
+			segment.CanQuery = false
+			segment.CanTouch = false
+			segment.CastShadow = false
+			segment.Material = Enum.Material.Neon
+			segment.Color = color
+			segment.Size = Vector3.new(0.3, 0.3, length)
+			segment.CFrame = CFrame.lookAt(a, b) * CFrame.new(0, 0, -length / 2)
+			segment.Parent = workspace
+			TweenService:Create(segment, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Transparency = 1,
+			}):Play()
+			Debris:AddItem(segment, 0.3)
+		end
+	end
+end
+
+-- Chain (Arc): bolts from the caster to each enemy in turn (SkillCast.findChain, the same pick the server makes).
+-- Nobody in range: a short fizzle toward the aim
+local function playChainEffect(rootPart: BasePart, aimPoint: Vector3, direction: Vector3, skill: SkillData.Skill, look: SkillLook)
+	local range = (skill.Range or 0) * look.Scale
+	local targets = SkillCast.findChain(rootPart.Position, aimPoint, range, skill.Chains or 0, (skill.ChainRange or 0) * look.Scale)
+	local from = rootPart.Position
+	for _, model in ipairs(targets) do
+		local targetRoot = model:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if targetRoot then
+			spawnBolt(from, targetRoot.Position, look.Color)
+			from = targetRoot.Position
+		end
+	end
+	if #targets == 0 then
+		spawnBolt(rootPart.Position, rootPart.Position + direction * math.min(range, 8), look.Color)
+	end
+end
+
 local function playSkillVFX(character: Model, skillId: string, aimPoint: Vector3, step: number)
 	local skill = SkillData[skillId]
-	if not skill then
+	local rootPart = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not skill or not rootPart then
 		return
 	end
 	local look = getSkillLook(character, skillId)
-	if skill.Shape == "Radius" then
-		playSpinVFX(character, skill.Radius or 10, look)
-	else
-		playSlashVFX(character, aimPoint, step, look)
+	local direction = getAimDirection(rootPart, aimPoint)
+	playPose(character, skill.Animation, step)
+
+	if skill.Shape == "Box" then
+		playSlashEffect(rootPart, direction, step, look)
+	elseif skill.Shape == "Radius" then
+		playRingEffect(character, rootPart, direction, skill, look)
+	elseif skill.Shape == "Projectile" then
+		local lookCF = CFrame.lookAt(rootPart.Position, rootPart.Position + direction)
+		local angles = if look.Split then { 0, RuneData.SPLIT_ANGLE, -RuneData.SPLIT_ANGLE } else { 0 }
+		for _, angle in ipairs(angles) do
+			local shotDirection = (lookCF * CFrame.Angles(0, math.rad(angle), 0)).LookVector
+			spawnProjectile(character, rootPart.Position, shotDirection, skill, look)
+		end
+	elseif skill.Shape == "Chain" then
+		playChainEffect(rootPart, aimPoint, direction, skill, look)
 	end
 end
 
@@ -439,8 +571,9 @@ end
 -- ==========================================
 -- 3. FLOATING DAMAGE NUMBERS & HIT FLASH
 -- ==========================================
--- element = "Fire" / "Cold" / "Lightning" for elemental hits and burns, nil for normal hits
-local function showHitFeedback(targetModel: Model, damage: number, isCrit: boolean, element: string?)
+-- element = "Fire" / "Cold" / "Lightning" for elemental hits and burns, nil for normal hits.
+-- text = shown instead of the number (e.g. "BLOCK")
+local function showHitFeedback(targetModel: Model, damage: number, isCrit: boolean, element: string?, text: string?)
 	local rootPart = targetModel:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not rootPart then
 		return
@@ -480,8 +613,10 @@ local function showHitFeedback(targetModel: Model, damage: number, isCrit: boole
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
-	label.Text = if isCrit then tostring(damage) .. "!" else tostring(damage)
-	label.TextColor3 = if isPlayerHurt
+	label.Text = if text then text elseif isCrit then tostring(damage) .. "!" else tostring(damage)
+	label.TextColor3 = if text
+		then Color3.fromRGB(200, 200, 215)
+		elseif isPlayerHurt
 		then PLAYER_HURT_COLOR
 		elseif element and Elements.Colors[element] then Elements.Colors[element]
 		elseif isCrit then Color3.fromRGB(255, 215, 45)
@@ -598,7 +733,8 @@ local function getCooldown(skillId: string): number
 	if flaskKind then
 		return PlayerStats.FLASKS[flaskKind].Duration
 	end
-	local attackSpeed = player:GetAttribute("AttackSpeed") or 0
+	-- AttackSpeed stat + Ranger Momentum (HeroAttackSpeed), the same sum CombatServer uses
+	local attackSpeed = (player:GetAttribute("AttackSpeed") or 0) + (player:GetAttribute("HeroAttackSpeed") or 0)
 	return PlayerStats.getCooldown(SkillData[skillId].Cooldown, attackSpeed)
 end
 
@@ -647,11 +783,19 @@ local function useSkill(skillId: string)
 	combatRemote:FireServer(skillId, aimPoint)
 end
 
-local function getSkillForInput(input: InputObject): string?
-	for _, entry in ipairs(SKILL_BAR) do
-		for _, inputEnum in ipairs(entry.Inputs) do
+-- Uses whatever skill is in a skill bar slot (an empty slot does nothing)
+local function useSlot(slot: number)
+	local skillId = slotSkills[slot]
+	if skillId and SkillData[skillId] then
+		useSkill(skillId)
+	end
+end
+
+local function getSlotForInput(input: InputObject): number?
+	for slot, inputs in ipairs(SKILL_SLOT_INPUTS) do
+		for _, inputEnum in ipairs(inputs) do
 			if input.UserInputType == inputEnum or input.KeyCode == inputEnum then
-				return entry.SkillId
+				return slot
 			end
 		end
 	end
@@ -662,23 +806,23 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessedEv
 	if gameProcessedEvent then
 		return
 	end
-	local skillId = getSkillForInput(input)
-	if skillId then
-		heldSkills[skillId] = true
-		useSkill(skillId)
+	local slot = getSlotForInput(input)
+	if slot then
+		heldSlots[slot] = true
+		useSlot(slot)
 	end
 end)
 
 UserInputService.InputEnded:Connect(function(input: InputObject)
-	local skillId = getSkillForInput(input)
-	if skillId then
-		heldSkills[skillId] = nil
+	local slot = getSlotForInput(input)
+	if slot then
+		heldSlots[slot] = nil
 	end
 end)
 
 -- Alt-tabbing while holding a button would otherwise keep attacking forever
 UserInputService.WindowFocusReleased:Connect(function()
-	table.clear(heldSkills)
+	table.clear(heldSlots)
 end)
 
 -- ==========================================
@@ -914,7 +1058,10 @@ local bar = Ui.new("Frame", {
 	-- PC: bottom center, the flasks and Dodge are the last slots. Mobile: right side, above the flask / Dodge buttons
 	AnchorPoint = if isTouchOnly then Vector2.new(1, 1) else Vector2.new(0.5, 1),
 	Position = if isTouchOnly then UDim2.new(1, -24, 1, -150) else UDim2.new(0.5, 0, 1, -16),
-	Size = UDim2.fromOffset((if isTouchOnly then #SKILL_BAR else #SKILL_BAR + #FLASK_SLOTS + 1) * (SLOT_SIZE + 10), SLOT_SIZE),
+	Size = UDim2.fromOffset(
+		(if isTouchOnly then #SKILL_SLOT_INPUTS else #SKILL_SLOT_INPUTS + #FLASK_SLOTS + 1) * (SLOT_SIZE + 10),
+		SLOT_SIZE
+	),
 	BackgroundTransparency = 1,
 	Parent = skillGui,
 }, {
@@ -928,7 +1075,8 @@ local bar = Ui.new("Frame", {
 
 local cooldownOverlays: { [string]: { Overlay: Frame, Text: TextLabel } } = {}
 
--- One square slot with a cooldown overlay. id = skill id, "LifeFlask" / "ManaFlask" or "Dodge" (see getCooldown)
+-- One square slot with a cooldown overlay. id = "Slot1".."Slot4" (the skill in that bar slot),
+-- "LifeFlask" / "ManaFlask" or "Dodge" (see getCooldown)
 local function createSlot(id: string, displayName: string, keyText: string, layoutOrder: number, parent: Instance): TextButton
 	local button = Ui.button({
 		Name = id,
@@ -982,17 +1130,34 @@ local function createSlot(id: string, displayName: string, keyText: string, layo
 	return button
 end
 
-for index, entry in ipairs(SKILL_BAR) do
-	local button = createSlot(entry.SkillId, SkillData[entry.SkillId].Name, entry.KeyText, index, bar)
+-- Skill slots: each shows the name of the skill in it, "Empty" when there's none
+local slotNameLabels: { TextLabel } = {}
+for slot = 1, #SKILL_SLOT_INPUTS do
+	local button = createSlot("Slot" .. slot, "", PlayerStats.SKILL_BAR_KEYS[slot] or "", slot, bar)
+	slotNameLabels[slot] = button:FindFirstChild("SkillName") :: TextLabel
 	button.Activated:Connect(function()
-		useSkill(entry.SkillId)
+		useSlot(slot)
 	end)
 end
+
+-- "SkillBar" = "BasicSlash,SpinSlash,," from the server (PlayerData), changes when the inventory moves Skill Stones
+local function readSkillBar()
+	local text = player:GetAttribute("SkillBar")
+	local entries = if type(text) == "string" then string.split(text, ",") else {}
+	for slot = 1, #SKILL_SLOT_INPUTS do
+		local skill = SkillData[entries[slot] or ""]
+		slotSkills[slot] = if skill then entries[slot] else ""
+		slotNameLabels[slot].Text = if skill then skill.Name else "Empty"
+		slotNameLabels[slot].TextColor3 = if skill then Ui.Colors.Text else Ui.Colors.TextDim
+	end
+end
+player:GetAttributeChangedSignal("SkillBar"):Connect(readSkillBar)
+readSkillBar()
 
 -- Flask slots: liquid level = charges / max (fills up between uses as kills add charges), name shows uses left.
 -- Mobile: a row left of the Dodge button
 for index, flask in ipairs(FLASK_SLOTS) do
-	local button = createSlot(flask.Kind .. "Flask", flask.Kind, flask.KeyText, #SKILL_BAR + index, if isTouchOnly then skillGui else bar)
+	local button = createSlot(flask.Kind .. "Flask", flask.Kind, flask.KeyText, #SKILL_SLOT_INPUTS + index, if isTouchOnly then skillGui else bar)
 	if isTouchOnly then
 		button.AnchorPoint = Vector2.new(1, 1)
 		button.Position = UDim2.new(1, -24 - (SLOT_SIZE + 12) * (#FLASK_SLOTS - index + 1), 1, -40)
@@ -1024,7 +1189,7 @@ for index, flask in ipairs(FLASK_SLOTS) do
 end
 
 -- Mobile: Dodge takes the spot of Roblox's jump button (bottom right, under the skills)
-local dodgeButton = createSlot("Dodge", "Dodge", "Space", #SKILL_BAR + #FLASK_SLOTS + 1, if isTouchOnly then skillGui else bar)
+local dodgeButton = createSlot("Dodge", "Dodge", "Space", #SKILL_SLOT_INPUTS + #FLASK_SLOTS + 1, if isTouchOnly then skillGui else bar)
 if isTouchOnly then
 	dodgeButton.AnchorPoint = Vector2.new(1, 1)
 	dodgeButton.Position = UDim2.new(1, -24, 1, -40)
@@ -1034,7 +1199,15 @@ dodgeButton.Activated:Connect(dodge)
 RunService.RenderStepped:Connect(function()
 	local now = os.clock()
 	local mana = player:GetAttribute("Mana") or 0
-	for skillId, ui in pairs(cooldownOverlays) do
+	for id, ui in pairs(cooldownOverlays) do
+		-- A skill slot shows the cooldown of the skill in it (an empty slot shows nothing)
+		local slot = tonumber(string.match(id, "^Slot(%d+)$"))
+		local skillId = if slot then slotSkills[slot] or "" else id
+		if skillId == "" then
+			ui.Overlay.Size = UDim2.fromScale(1, 0)
+			ui.Text.Text = ""
+			continue
+		end
 		local cooldown = getCooldown(skillId)
 		local remaining = cooldown - (now - (lastUseTimes[skillId] or -math.huge))
 		-- Not enough mana: the whole slot stays shaded blue until mana regenerates
@@ -1054,8 +1227,8 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	-- Hold to keep attacking (useSkill ignores calls while on cooldown)
-	for skillId in pairs(heldSkills) do
-		useSkill(skillId)
+	for slot in pairs(heldSlots) do
+		useSlot(slot)
 	end
 end)
 
@@ -1098,5 +1271,28 @@ combatRemote.OnClientEvent:Connect(function(action: string, ...)
 	elseif action == "CorpseExplosion" then
 		local center: Vector3, radius: number = ...
 		playCorpseExplosion(center, radius)
+	elseif action == "OrbShot" then
+		-- Mystic Stone Orb shot (HeroService): a short bolt from the player's orbs to the enemy
+		local from: Vector3, to: Vector3, element: string = ...
+		spawnBolt(from, to, Elements.Colors[element] or Color3.fromRGB(205, 195, 255))
+	elseif action == "HeroPulse" then
+		-- Warrior full-Fury release: a burst ring around the player (Earthbreaker: as big as the shockwave)
+		local character: Model, radius: number, color: Color3 = ...
+		local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if rootPart then
+			local ring = makeDisc(getGroundBelow(character, rootPart) + Vector3.new(0, 0.7, 0), 2, color, 0.15)
+			ring.Name = "HeroPulseVFX"
+			TweenService:Create(ring, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+				Size = Vector3.new(0.2, radius * 2, radius * 2),
+				Transparency = 1,
+			}):Play()
+			Debris:AddItem(ring, 0.4)
+		end
+	elseif action == "HeroBlock" then
+		-- A Wardstone orb took an enemy hit for this player
+		local character: Model = ...
+		if character then
+			showHitFeedback(character, 0, false, nil, "BLOCK")
+		end
 	end
 end)

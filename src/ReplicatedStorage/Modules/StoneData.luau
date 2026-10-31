@@ -73,7 +73,7 @@ function StoneData.whyNot(stoneId: string, item: ItemData.Item): string?
 	local base = ItemData.Bases[item.Base]
 	if not StoneData.Stones[stoneId] then
 		return "Unknown stone"
-	elseif not base or base.Slot == "Rune" then
+	elseif not base or base.Slot == "Rune" or base.Slot == "Skill" then
 		return "Crafting stones only work on gear and Stone Tablets"
 	end
 

@@ -33,12 +33,21 @@ mockEnv.Random = {
 	end,
 }
 
--- Load RuneData and TabletData
+mockEnv.Vector3 = {
+	new = function(x, y, z)
+		return { X = x, Y = y, Z = z }
+	end,
+}
+
+-- Load RuneData, TabletData and SkillData
 local runeDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/RuneData.luau"))
 local RuneData = luau.load(runeDataBytecode, { environment = mockEnv })()
 
 local tabletDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/TabletData.luau"))
 local TabletData = luau.load(tabletDataBytecode, { environment = mockEnv })()
+
+local skillDataBytecode = luau.compile(fs.readFile("src/ReplicatedStorage/Modules/SkillData.luau"))
+local SkillData = luau.load(skillDataBytecode, { environment = mockEnv })()
 
 -- Setup script mock for ItemData
 local itemDataScript = {
@@ -48,6 +57,8 @@ local itemDataScript = {
 				return "RuneData"
 			elseif name == "TabletData" then
 				return "TabletData"
+			elseif name == "SkillData" then
+				return "SkillData"
 			end
 			error("Child not found: " .. tostring(name))
 		end,
@@ -64,6 +75,8 @@ itemDataEnv.require = function(target)
 		return RuneData
 	elseif target == "TabletData" then
 		return TabletData
+	elseif target == "SkillData" then
+		return SkillData
 	end
 	return require(target)
 end
@@ -178,6 +191,8 @@ lootEnv.require = function(target)
 		return ItemData
 	elseif target == "RuneData" then
 		return RuneData
+	elseif target == "SkillData" then
+		return SkillData
 	elseif target == "StoneData" then
 		return StoneData
 	elseif target == "TabletData" then
@@ -296,6 +311,38 @@ test("Loot.rollItem generates gear with valid base and rarity", function()
 	local base = ItemData.Bases[item.Base]
 	assertEq(base ~= nil, true, "Base must exist in ItemData.Bases")
 	assertEq(base.Slot ~= "Rune" and base.Slot ~= "Tablet", true, "Gear roll never rolls Runes or Tablets")
+	-- Many rolls: a Skill Stone must never come out of the gear roll either
+	for _ = 1, 50 do
+		local rolled = Loot.rollItem("Normal")
+		assertEq(ItemData.Bases[rolled.Base].Slot ~= "Skill", true, "Gear roll never rolls Skill Stones")
+	end
+end)
+
+test("Loot.rollSkillStone generates a valid Skill Stone", function()
+	for _ = 1, 20 do
+		local stone = Loot.rollSkillStone()
+		assertEq(stone.Rarity, "Skill", "Skill Stone rarity should be Skill")
+		assertEq(#stone.Affixes, 0, "Skill Stones have 0 affixes")
+		local skillId = ItemData.getSkillId(stone)
+		assertEq(skillId ~= nil and SkillData[skillId] ~= nil, true, "Item should resolve to a real skill")
+	end
+end)
+
+test("Crafting stones refuse Skill Stones and runes", function()
+	local stone: any = { Id = "k1", Base = ItemData.getSkillStoneBase("Fireball"), Rarity = "Skill", Affixes = {} }
+	for stoneId in pairs(StoneData.Stones) do
+		assertEq(typeof(StoneData.whyNot(stoneId, stone)), "string", stoneId .. " must not work on a Skill Stone")
+	end
+end)
+
+test("RuneData.fits follows shape and element rules", function()
+	assertEq(RuneData.fits("Split", SkillData.BasicSlash), true, "Split fits a Box slash")
+	assertEq(RuneData.fits("Split", SkillData.StoneShot), true, "Split fits a projectile")
+	assertEq(RuneData.fits("Split", SkillData.Arc), false, "Split doesn't fit a chain")
+	assertEq(RuneData.fits("Ember", SkillData.GroundSlam), true, "Element runes fit Physical skills")
+	assertEq(RuneData.fits("Ember", SkillData.Fireball), false, "Element runes don't fit spells")
+	assertEq(RuneData.fits("Reach", SkillData.Arc), true, "Reach fits every skill")
+	assertEq(RuneData.fits("Detonation", SkillData.FrostNova), true, "Detonation fits every skill")
 end)
 
 test("Loot.rollRune generates valid Stone Rune", function()

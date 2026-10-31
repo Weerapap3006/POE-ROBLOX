@@ -13,6 +13,7 @@ local Elements = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild(
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
 local PlayerResources = require(script.Parent:WaitForChild("PlayerResources"))
 local Ailments = require(script.Parent:WaitForChild("Ailments"))
+local HeroService = require(script.Parent:WaitForChild("HeroService"))
 local DungeonRun = require(script.Parent:WaitForChild("DungeonRun"))
 local TabletData = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TabletData"))
 local Loot = require(script.Parent:WaitForChild("Loot"))
@@ -396,10 +397,14 @@ local function damagePlayer(character: Model, amount: number, element: string)
 	if (character:GetAttribute("InvulnerableUntil") or 0) > os.clock() then
 		return -- Mid dodge roll (CombatServer sets this)
 	end
+	local player = Players:GetPlayerFromCharacter(character)
+	if player and HeroService.absorbHit(player) then
+		combatRemote:FireAllClients("HeroBlock", character) -- A Wardstone orb took the whole hit (Mystic)
+		return
+	end
 
 	-- Elemental hits are reduced by the player's resistance (up to Elements.MAX_RESISTANCE)
 	local isElemental = element ~= "Physical"
-	local player = Players:GetPlayerFromCharacter(character)
 	if player and isElemental then
 		local resistance = (PlayerData.getStats(player) :: any)[element .. "Resistance"] or 0
 		amount *= 1 - math.min(resistance, Elements.MAX_RESISTANCE) / 100
