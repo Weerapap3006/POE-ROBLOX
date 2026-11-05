@@ -72,6 +72,7 @@ local confirmingDiscard = false
 -- Crafting stone whose valid targets light up: hovered tile (PC) or a tile tapped with nothing selected (pinned)
 local hoveredStone: string? = nil
 local pinnedStone: string? = nil
+local activeTab: "Bag" | "Stats" = "Bag"
 
 local isTouchOnly = Ui.isTouchOnly()
 
@@ -166,19 +167,38 @@ workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateS
 
 Ui.text({
 	Position = UDim2.fromOffset(16, 8),
-	Size = UDim2.new(1, -80, 0, 32),
+	Size = UDim2.fromOffset(215, 32),
 	Text = "Inventory & Equipment [B]",
-	TextSize = 20,
+	TextSize = 19,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	Parent = window,
 })
+
+local bagTabButton = Ui.button({
+	Name = "BagTab",
+	Position = UDim2.fromOffset(236, 10),
+	Size = UDim2.fromOffset(104, 28),
+	Text = "Bag & Gear",
+	TextSize = 13,
+	Parent = window,
+}, { Ui.corner(6), Ui.stroke(Ui.Colors.Accent, 1.5) })
+
+local statsTabButton = Ui.button({
+	Name = "StatsTab",
+	Position = UDim2.fromOffset(346, 10),
+	Size = UDim2.fromOffset(124, 28),
+	Text = "Character Stats",
+	TextSize = 13,
+	Parent = window,
+}, { Ui.corner(6), Ui.stroke(Ui.Colors.Stroke, 1.5) })
+
 -- Hotkey hint (PC only: phones have no Shift / X)
-Ui.text({
+local hotkeyHint = Ui.text({
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -52, 0, 8),
-	Size = UDim2.fromOffset(320, 32),
-	Text = "Shift+Click: Equip / Unequip   |   X: Discard",
-	TextSize = 13,
+	Size = UDim2.fromOffset(245, 32),
+	Text = "Shift+Click: Equip/Unequip | X: Discard",
+	TextSize = 12,
 	TextColor3 = Ui.Colors.TextDim,
 	TextXAlignment = Enum.TextXAlignment.Right,
 	Visible = not isTouchOnly,
@@ -495,6 +515,57 @@ for slot = 1, PlayerStats.SKILL_BAR_SLOTS do
 end
 
 -- ==========================================
+-- 1.5 CHARACTER STATS MENU PAGE (Tab inside Inventory window)
+-- ==========================================
+local statsPage = Ui.new("Frame", {
+	Name = "StatsPage",
+	Position = UDim2.fromOffset(12, 48),
+	Size = UDim2.new(1, -24, 1, -60),
+	BackgroundTransparency = 1,
+	Visible = false,
+	Parent = window,
+})
+
+local STATS_COL_WIDTH = math.floor((WINDOW_WIDTH - 24 - 24) / 3)
+
+local function makeStatsCard(title: string, colIndex: number): TextLabel
+	local card = Ui.new("Frame", {
+		Position = UDim2.fromOffset(colIndex * (STATS_COL_WIDTH + 12), 0),
+		Size = UDim2.new(0, STATS_COL_WIDTH, 1, 0),
+		BackgroundColor3 = Ui.Colors.PanelLight,
+		BackgroundTransparency = 0.25,
+		Parent = statsPage,
+	}, {
+		Ui.corner(8),
+		Ui.stroke(Ui.Colors.Stroke, 1.5),
+	})
+	Ui.text({
+		Position = UDim2.fromOffset(12, 10),
+		Size = UDim2.new(1, -24, 0, 22),
+		Text = title,
+		TextSize = 15,
+		TextColor3 = Ui.Colors.Accent,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = card,
+	})
+	return Ui.text({
+		Position = UDim2.fromOffset(12, 38),
+		Size = UDim2.new(1, -24, 1, -48),
+		TextSize = 13,
+		RichText = true,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Text = "",
+		Parent = card,
+	})
+end
+
+local defenseStatsText = makeStatsCard("DEFENSE & VITALITY", 0)
+local resistanceOffenseText = makeStatsCard("RESISTANCES & OFFENSE", 1)
+local skillBreakdownText = makeStatsCard("SKILL ATTACK STATS", 2)
+
+-- ==========================================
 -- 2. RENDERING (rebuilt from state after every change)
 -- ==========================================
 local render: () -> ()
@@ -665,18 +736,171 @@ local function renderStats()
 		return prefix .. table.concat(parts, " / ")
 	end
 
+	local level = player:GetAttribute("Level") or 1
+	local exp = player:GetAttribute("Exp") or 0
+	local expToNext = player:GetAttribute("ExpToNext") or PlayerStats.expToNext(level)
+	local maxHealth = player:GetAttribute("MaxHealth") or 100
+	local maxMana = player:GetAttribute("MaxMana") or 50
+	local flatDamage = player:GetAttribute("FlatDamage") or 0
+	local attackSpeed = (player:GetAttribute("AttackSpeed") or 0) + (player:GetAttribute("HeroAttackSpeed") or 0)
+	local maxEs = player:GetAttribute("MaxEnergyShield") or 0
+	local esRecharge = player:GetAttribute("EnergyShieldRecharge") or 0
+	local armor = player:GetAttribute("Armor") or 0
+	local evasion = player:GetAttribute("Evasion") or 0
+	local manaRegenBonus = player:GetAttribute("ManaRegen") or 0
+	local lootBonus = player:GetAttribute("LootQuantity") or 0
+
 	statsLabel.Text = string.format(
-		"Lv %d  |  HP %d  |  MP %d\nDMG +%d  |  ATK SPD +%d%%\nES %d  |  ES RECHARGE +%d%%\n%s\n%s",
-		player:GetAttribute("Level") or 1,
-		player:GetAttribute("MaxHealth") or 100,
-		player:GetAttribute("MaxMana") or 50,
-		player:GetAttribute("FlatDamage") or 0,
-		player:GetAttribute("AttackSpeed") or 0,
-		player:GetAttribute("MaxEnergyShield") or 0,
-		player:GetAttribute("EnergyShieldRecharge") or 0,
+		"Lv %d  |  HP %d  |  MP %d\nDMG +%d  |  ATK SPD +%d%%\nARM %d%%  |  EVA %d%%  |  ES %d\n%s\n%s",
+		level,
+		maxHealth,
+		maxMana,
+		flatDamage,
+		attackSpeed,
+		math.min(armor, PlayerStats.MAX_ARMOR_REDUCTION),
+		math.min(evasion, PlayerStats.MAX_EVASION_CHANCE),
+		maxEs,
 		elementLine("ELE DMG ", "Damage", "+%d"),
 		elementLine("RES ", "Resistance", "%d%%")
 	)
+
+	-- Full Character Stats Tab
+	local dimHex = Ui.Colors.TextDim:ToHex()
+	local heroClass = player:GetAttribute("HeroClass") or ""
+	local heroVariant = player:GetAttribute("HeroVariant") or ""
+	local classLabel = if heroClass ~= ""
+		then (if heroVariant ~= "" then heroClass .. " · " .. heroVariant else heroClass)
+		else "Unchosen"
+	local manaPerSec = maxMana * PlayerStats.MANA_REGEN_PERCENT * (1 + manaRegenBonus / 100)
+	local effectiveArmor = math.min(armor, PlayerStats.MAX_ARMOR_REDUCTION)
+	local effectiveEvasion = math.min(evasion, PlayerStats.MAX_EVASION_CHANCE)
+	local esPerSec = maxEs * PlayerStats.ENERGY_SHIELD_RECHARGE_PERCENT * (1 + esRecharge / 100)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local walkSpeed = if humanoid then math.round(humanoid.WalkSpeed) else 18
+
+	defenseStatsText.Text = table.concat({
+		string.format("<b>Class:</b> %s", classLabel),
+		string.format("<b>Level:</b> %d   <font color=\"#%s\">(EXP %d / %d)</font>", level, dimHex, exp, expToNext),
+		"",
+		string.format("<b>Max Health (HP):</b> %d", maxHealth),
+		string.format("<b>Max Mana (MP):</b> %d", maxMana),
+		string.format("<b>Mana Regen:</b> %.1f /s <font color=\"#%s\">(+%d%%)</font>", manaPerSec, dimHex, manaRegenBonus),
+		"",
+		string.format(
+			"<b>Armor (Physical Red.):</b> %d%% <font color=\"#%s\">(Total %d%% / Cap %d%%)</font>",
+			effectiveArmor,
+			dimHex,
+			armor,
+			PlayerStats.MAX_ARMOR_REDUCTION
+		),
+		string.format(
+			"<b>Evasion (Dodge Hit):</b> %d%% <font color=\"#%s\">(Total %d%% / Cap %d%%)</font>",
+			effectiveEvasion,
+			dimHex,
+			evasion,
+			PlayerStats.MAX_EVASION_CHANCE
+		),
+		string.format("<b>Max Energy Shield:</b> %d", maxEs),
+		string.format("<b>ES Recharge Rate:</b> %.1f /s <font color=\"#%s\">(+%d%%, %ds delay)</font>", esPerSec, dimHex, esRecharge, PlayerStats.ENERGY_SHIELD_RECHARGE_DELAY),
+		"",
+		string.format("<b>Move Speed:</b> %d studs/s", walkSpeed),
+		string.format("<b>Dodge Dash:</b> %d studs / %.2fs <font color=\"#%s\">(CD %ds)</font>", PlayerStats.DODGE_DISTANCE, PlayerStats.DODGE_DURATION, dimHex, PlayerStats.DODGE_COOLDOWN),
+	}, "\n")
+
+	local fireRes = player:GetAttribute("FireResistance") or 0
+	local coldRes = player:GetAttribute("ColdResistance") or 0
+	local lightRes = player:GetAttribute("LightningResistance") or 0
+	local fireDmg = player:GetAttribute("FireDamage") or 0
+	local coldDmg = player:GetAttribute("ColdDamage") or 0
+	local lightDmg = player:GetAttribute("LightningDamage") or 0
+	local fireHex = Elements.Colors.Fire:ToHex()
+	local coldHex = Elements.Colors.Cold:ToHex()
+	local lightHex = Elements.Colors.Lightning:ToHex()
+	local maxRes = Elements.MAX_RESISTANCE
+
+	resistanceOffenseText.Text = table.concat({
+		"<b>Elemental Resistances (Cap 75%)</b>",
+		string.format(
+			'<font color="#%s"><b>Fire Resistance:</b> %d%%</font> <font color="#%s">(Total %d%% / %d%%)</font>',
+			fireHex,
+			math.min(fireRes, maxRes),
+			dimHex,
+			fireRes,
+			maxRes
+		),
+		string.format(
+			'<font color="#%s"><b>Cold Resistance:</b> %d%%</font> <font color="#%s">(Total %d%% / %d%%)</font>',
+			coldHex,
+			math.min(coldRes, maxRes),
+			dimHex,
+			coldRes,
+			maxRes
+		),
+		string.format(
+			'<font color="#%s"><b>Lightning Resistance:</b> %d%%</font> <font color="#%s">(Total %d%% / %d%%)</font>',
+			lightHex,
+			math.min(lightRes, maxRes),
+			dimHex,
+			lightRes,
+			maxRes
+		),
+		"",
+		"<b>Offensive Stats</b>",
+		string.format("<b>Bonus Base Damage:</b> +%d", flatDamage),
+		string.format("<b>Attack Speed Bonus:</b> +%d%%", attackSpeed),
+		string.format('<font color="#%s"><b>Added Fire Damage:</b> +%d</font> <font color="#%s">(Burn)</font>', fireHex, fireDmg, dimHex),
+		string.format('<font color="#%s"><b>Added Cold Damage:</b> +%d</font> <font color="#%s">(Chill/Freeze)</font>', coldHex, coldDmg, dimHex),
+		string.format('<font color="#%s"><b>Added Lightning Damage:</b> +%d</font> <font color="#%s">(Shock)</font>', lightHex, lightDmg, dimHex),
+		"",
+		"<b>Utility</b>",
+		string.format("<b>Monster Drop Bonus:</b> +%d%%", lootBonus),
+	}, "\n")
+
+	local skillLines = {}
+	local bonusEleTotal = fireDmg + coldDmg + lightDmg
+	for slot = 1, PlayerStats.SKILL_BAR_SLOTS do
+		local keyLabel = PlayerStats.SKILL_BAR_KEYS[slot] or tostring(slot)
+		local skillId = skillBar[slot] or ""
+		local skill = SkillData[skillId]
+		if skill then
+			local minHit = skill.MinDamage + flatDamage
+			local maxHit = skill.MaxDamage + flatDamage
+			local cd = PlayerStats.getCooldown(skill.Cooldown, attackSpeed)
+			local critPct = math.round(skill.CritChance * 100)
+			local eleHex = (Elements.Colors[skill.Element] or Ui.Colors.Text):ToHex()
+			table.insert(
+				skillLines,
+				string.format('<b>[%s] <font color="#%s">%s</font></b> <font color="#%s">(%s)</font>', keyLabel, eleHex, skill.Name, dimHex, skill.Element)
+			)
+			table.insert(
+				skillLines,
+				string.format(
+					"  DMG: <b>%d–%d</b>%s  |  CD: <b>%.2fs</b>",
+					minHit,
+					maxHit,
+					if bonusEleTotal > 0 then string.format(" (+%d Ele)", bonusEleTotal) else "",
+					cd
+				)
+			)
+			table.insert(
+				skillLines,
+				string.format(
+					'  <font color="#%s">Crit: %d%% (×%.1f)  |  Mana: %d</font>',
+					dimHex,
+					critPct,
+					skill.CritMultiplier,
+					skill.ManaCost
+				)
+			)
+		else
+			table.insert(skillLines, string.format('<b>[%s]</b> <font color="#%s">Empty Slot</font>', keyLabel, dimHex))
+		end
+		if slot < PlayerStats.SKILL_BAR_SLOTS then
+			table.insert(skillLines, "")
+		end
+	end
+	skillBreakdownText.Text = table.concat(skillLines, "\n")
 end
 
 -- Skill bar strip: each slot's key + skill name and its sockets. A Skill Stone selected in the bag lights up the
@@ -973,6 +1197,25 @@ local function renderStones()
 end
 
 function render()
+	local isBag = activeTab == "Bag"
+	leftColumn.Visible = isBag
+	gridColumn.Visible = isBag
+	detailColumn.Visible = isBag
+	runeStrip.Visible = isBag
+	statsPage.Visible = not isBag
+	hotkeyHint.Visible = not isTouchOnly and isBag
+
+	bagTabButton.BackgroundColor3 = if isBag then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.55) else Ui.Colors.Panel
+	statsTabButton.BackgroundColor3 = if not isBag then Ui.Colors.Accent:Lerp(Ui.Colors.PanelLight, 0.55) else Ui.Colors.Panel
+	local bagStroke = bagTabButton:FindFirstChildOfClass("UIStroke")
+	local statsStroke = statsTabButton:FindFirstChildOfClass("UIStroke")
+	if bagStroke then
+		bagStroke.Color = if isBag then Ui.Colors.Accent else Ui.Colors.Stroke
+	end
+	if statsStroke then
+		statsStroke.Color = if not isBag then Ui.Colors.Accent else Ui.Colors.Stroke
+	end
+
 	renderGrid()
 	renderEquipped()
 	renderSkillBar()
@@ -980,6 +1223,16 @@ function render()
 	renderStats()
 	renderDetails()
 end
+
+bagTabButton.Activated:Connect(function()
+	activeTab = "Bag"
+	render()
+end)
+
+statsTabButton.Activated:Connect(function()
+	activeTab = "Stats"
+	render()
+end)
 
 -- ==========================================
 -- 3. BUTTONS & REQUESTS TO THE SERVER

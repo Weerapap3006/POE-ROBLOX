@@ -20,6 +20,8 @@ export type Stats = {
 	FireResistance: number,
 	ColdResistance: number,
 	LightningResistance: number,
+	Armor: number, -- % less physical damage taken from enemy hits (capped at MAX_ARMOR_REDUCTION)
+	Evasion: number, -- % chance to evade enemy hits completely (capped at MAX_EVASION_CHANCE)
 	ManaRegen: number, -- % faster mana regeneration (Stone Spirits)
 	LootQuantity: number, -- % more drops from monsters this player helped kill (Stone Spirits)
 }
@@ -30,6 +32,8 @@ PlayerStats.MAX_LEVEL = 30
 PlayerStats.BASE_MAX_HEALTH = 100
 PlayerStats.MAX_HEALTH_PER_LEVEL = 12
 PlayerStats.DAMAGE_PER_LEVEL = 2
+PlayerStats.MAX_ARMOR_REDUCTION = 75 -- Max % physical damage reduction from Armor
+PlayerStats.MAX_EVASION_CHANCE = 75 -- Max % chance to evade an enemy attack
 
 -- Mana (skills with a ManaCost in SkillData spend it)
 PlayerStats.BASE_MAX_MANA = 50
@@ -82,6 +86,8 @@ function PlayerStats.compute(level: number, equipped: { [string]: ItemData.Item 
 		FireResistance = 0,
 		ColdResistance = 0,
 		LightningResistance = 0,
+		Armor = 0,
+		Evasion = 0,
 		ManaRegen = 0,
 		LootQuantity = 0,
 	}

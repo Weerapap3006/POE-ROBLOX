@@ -375,6 +375,10 @@ local function refreshStats(player: Player, profile: Profile, healToFull: boolea
 	player:SetAttribute("FireResistance", profile.Stats.FireResistance)
 	player:SetAttribute("ColdResistance", profile.Stats.ColdResistance)
 	player:SetAttribute("LightningResistance", profile.Stats.LightningResistance)
+	player:SetAttribute("Armor", profile.Stats.Armor)
+	player:SetAttribute("Evasion", profile.Stats.Evasion)
+	player:SetAttribute("ManaRegen", profile.Stats.ManaRegen)
+	player:SetAttribute("LootQuantity", profile.Stats.LootQuantity)
 
 	applyToCharacter(player, profile, healToFull)
 end

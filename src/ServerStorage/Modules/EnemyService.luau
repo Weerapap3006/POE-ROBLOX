@@ -465,16 +465,28 @@ local function damagePlayer(character: Model, amount: number, element: string)
 		return -- Mid dodge roll (CombatServer sets this)
 	end
 	local player = Players:GetPlayerFromCharacter(character)
+	local stats = if player then PlayerData.getStats(player) else nil
+	if stats and stats.Evasion > 0 then
+		local evadeChance = math.min(stats.Evasion, PlayerStats.MAX_EVASION_CHANCE)
+		if random:NextNumber() * 100 < evadeChance then
+			return -- Evaded the hit silently
+		end
+	end
 	if player and HeroService.absorbHit(player) then
 		combatRemote:FireAllClients("HeroBlock", character) -- A Wardstone orb took the whole hit (Mystic)
 		return
 	end
 
-	-- Elemental hits are reduced by the player's resistance (up to Elements.MAX_RESISTANCE)
+	-- Elemental hits are reduced by resistance (up to Elements.MAX_RESISTANCE), physical hits by Armor (up to PlayerStats.MAX_ARMOR_REDUCTION)
 	local isElemental = element ~= "Physical"
-	if player and isElemental then
-		local resistance = (PlayerData.getStats(player) :: any)[element .. "Resistance"] or 0
-		amount *= 1 - math.min(resistance, Elements.MAX_RESISTANCE) / 100
+	if stats then
+		if isElemental then
+			local resistance = (stats :: any)[element .. "Resistance"] or 0
+			amount *= 1 - math.min(resistance, Elements.MAX_RESISTANCE) / 100
+		else
+			local armor = stats.Armor or 0
+			amount *= 1 - math.min(armor, PlayerStats.MAX_ARMOR_REDUCTION) / 100
+		end
 	end
 	-- Shocked players take more damage
 	hurtCharacter(character, humanoid, math.round(amount * Ailments.getDamageTakenMultiplier(character)), if isElemental then element else nil)

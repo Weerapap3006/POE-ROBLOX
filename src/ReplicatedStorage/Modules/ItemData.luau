@@ -71,6 +71,8 @@ ItemData.StatText = {
 	FireResistance = "+%d%% Fire Resistance",
 	ColdResistance = "+%d%% Cold Resistance",
 	LightningResistance = "+%d%% Lightning Resistance",
+	Armor = "+%d%% Armor",
+	Evasion = "+%d%% Evasion",
 	ManaRegen = "+%d%% Mana Regeneration", -- No affix yet: Stone Spirits
 	LootQuantity = "+%d%% Monster Drops", -- No affix yet: Stone Spirits
 } :: { [string]: string }
@@ -176,7 +178,7 @@ ItemData.Bases = {
 	LeatherVest = {
 		Name = "Leather Vest",
 		Slot = "Cloth",
-		Implicit = { MaxHealth = 30 },
+		Implicit = { MaxHealth = 30, Armor = 8, Evasion = 5 },
 	},
 	-- Endgame: placed in the Lobby portal (Loot drops it on its own, see EnemyData Drops.TabletChance)
 	StoneTablet = {
@@ -243,6 +245,8 @@ ItemData.Affixes = {
 	FireResistance = { Kind = "Suffix", Stat = "FireResistance", Min = 8, Max = 25 },
 	ColdResistance = { Kind = "Suffix", Stat = "ColdResistance", Min = 8, Max = 25 },
 	LightningResistance = { Kind = "Suffix", Stat = "LightningResistance", Min = 8, Max = 25 },
+	Armor = { Kind = "Prefix", Stat = "Armor", Min = 5, Max = 20 },
+	Evasion = { Kind = "Suffix", Stat = "Evasion", Min = 5, Max = 20 },
 } :: { [string]: AffixInfo }
 
 -- How many affixes each rarity rolls, and how many of them may be prefixes / suffixes

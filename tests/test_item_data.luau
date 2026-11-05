@@ -192,6 +192,8 @@ test("formatStat output patterns", function()
 	assertEq(ItemData.formatStat("FlatDamage", 8), "+8 Damage", "FlatDamage text pattern")
 	assertEq(ItemData.formatStat("MaxHealth", 50), "+50 Max Health", "MaxHealth text pattern")
 	assertEq(ItemData.formatStat("AttackSpeed", 12), "+12% Attack Speed", "AttackSpeed text pattern")
+	assertEq(ItemData.formatStat("Armor", 10), "+10% Armor", "Armor text pattern")
+	assertEq(ItemData.formatStat("Evasion", 15), "+15% Evasion", "Evasion text pattern")
 end)
 
 print(string.format("\n📊 Results: %d passed, %d failed\n", passed, failed))
